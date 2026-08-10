@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,7 +23,7 @@ class Run(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, nullable=False
+        DateTime(timezone=True), default=utcnow, nullable=False, server_default=func.now()
     )
 
     llm_calls: Mapped[list["LLMCall"]] = relationship(back_populates="run")
@@ -43,7 +43,7 @@ class LLMCall(Base):
     latency_ms: Mapped[int] = mapped_column(nullable=False)
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, nullable=False
+        DateTime(timezone=True), default=utcnow, nullable=False, server_default=func.now()
     )
 
     run: Mapped["Run"] = relationship(back_populates="llm_calls")

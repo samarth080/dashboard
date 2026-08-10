@@ -20,7 +20,12 @@ def upgrade() -> None:
     op.create_table(
         "runs",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
     )
     op.create_table(
         "llm_calls",
@@ -34,7 +39,12 @@ def upgrade() -> None:
         sa.Column("output_tokens", sa.Integer(), nullable=False),
         sa.Column("latency_ms", sa.Integer(), nullable=False),
         sa.Column("cost_usd", sa.Numeric(10, 6), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
     )
     op.create_index("ix_llm_calls_run_id", "llm_calls", ["run_id"])
 
