@@ -4,6 +4,7 @@ import pytest
 from pydantic import BaseModel
 
 from src.llm.mock import MockLLM
+from src.llm.protocol import StructuredResult
 
 
 class DummySchema(BaseModel):
@@ -45,8 +46,13 @@ async def test_generate_returns_llm_result():
 async def test_structured_returns_schema_instance():
     llm = MockLLM()
     result = await llm.structured("hello", prompt_version="v1", schema=DummySchema)
-    assert isinstance(result, DummySchema)
-    assert result.name == "default"
+    assert isinstance(result, StructuredResult)
+    assert isinstance(result.parsed, DummySchema)
+    assert result.parsed.name == "default"
+    # usage metadata must be present so the call can be cost-logged
+    assert result.usage.model == "mock-llm"
+    assert result.usage.prompt_version == "v1"
+    assert result.usage.cost_usd == Decimal("0")
 
 
 @pytest.mark.asyncio
@@ -54,14 +60,15 @@ async def test_structured_handles_schema_with_required_fields():
     """FIX 1 regression test: MockLLM must not crash on realistic schemas."""
     llm = MockLLM()
     result = await llm.structured("hello", prompt_version="v1", schema=RequiredFieldsSchema)
-    assert isinstance(result, RequiredFieldsSchema)
-    assert isinstance(result.name, str)
-    assert isinstance(result.count, int)
-    assert isinstance(result.active, bool)
-    assert result.tags == []
-    assert result.metadata == {}
-    assert isinstance(result.nested, NestedSchema)
-    assert isinstance(result.nested.label, str)
+    parsed = result.parsed
+    assert isinstance(parsed, RequiredFieldsSchema)
+    assert isinstance(parsed.name, str)
+    assert isinstance(parsed.count, int)
+    assert isinstance(parsed.active, bool)
+    assert parsed.tags == []
+    assert parsed.metadata == {}
+    assert isinstance(parsed.nested, NestedSchema)
+    assert isinstance(parsed.nested.label, str)
 
 
 @pytest.mark.asyncio
@@ -77,15 +84,18 @@ async def test_structured_response_can_be_injected():
     )
     llm = MockLLM(structured_response=canned)
     result = await llm.structured("hello", prompt_version="v1", schema=RequiredFieldsSchema)
-    assert result is canned
+    assert result.parsed is canned
 
 
 @pytest.mark.asyncio
 async def test_latency_ms_is_injectable():
     """FIX 9: latency_ms should be controllable rather than always 0."""
     llm = MockLLM(latency_ms=42)
-    result = await llm.generate("hello", prompt_version="v1")
-    assert result.latency_ms == 42
+    generate_result = await llm.generate("hello", prompt_version="v1")
+    assert generate_result.latency_ms == 42
+
+    structured_result = await llm.structured("hello", prompt_version="v1", schema=DummySchema)
+    assert structured_result.usage.latency_ms == 42
 
 
 @pytest.mark.asyncio
@@ -93,3 +103,17 @@ async def test_latency_ms_defaults_to_zero():
     llm = MockLLM()
     result = await llm.generate("hello", prompt_version="v1")
     assert result.latency_ms == 0
+
+
+async def test_structured_return_type_is_concrete_for_pyright() -> None:
+    """FIX 3 regression guard.
+
+    If `structured()` ever erases the schema type back to bare `BaseModel`,
+    this line fails pyright (assigning `BaseModel` to a `DummySchema`
+    -typed variable is a type error) even though it would still pass at
+    runtime under pytest.
+    """
+    llm = MockLLM()
+    result = await llm.structured("hello", prompt_version="v1", schema=DummySchema)
+    typed_parsed: DummySchema = result.parsed
+    assert typed_parsed.name == "default"

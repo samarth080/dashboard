@@ -13,7 +13,7 @@ from typing import Union, get_args, get_origin
 from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
 
-from src.llm.protocol import LLMResult
+from src.llm.protocol import LLMResult, StructuredResult
 
 
 def _build_placeholder(field_name: str, annotation: object) -> object:
@@ -100,9 +100,23 @@ class MockLLM:
             cost_usd=Decimal("0"),
         )
 
-    async def structured(
-        self, prompt: str, *, prompt_version: str, schema: type[BaseModel]
-    ) -> BaseModel:
+    async def structured[T: BaseModel](
+        self, prompt: str, *, prompt_version: str, schema: type[T]
+    ) -> StructuredResult[T]:
         if self._structured_response is not None:
-            return self._structured_response
-        return _deterministic_instance(schema)
+            # Caller's contract: the injected response must match `schema`.
+            parsed: T = self._structured_response  # type: ignore[assignment]
+        else:
+            parsed = _deterministic_instance(schema)
+
+        text = parsed.model_dump_json()
+        usage = LLMResult(
+            text=text,
+            model=self.model_name,
+            prompt_version=prompt_version,
+            input_tokens=len(prompt.split()),
+            output_tokens=len(text.split()),
+            latency_ms=self._latency_ms,
+            cost_usd=Decimal("0"),
+        )
+        return StructuredResult(parsed=parsed, usage=usage)
