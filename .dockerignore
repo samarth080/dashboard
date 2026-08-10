@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+.git/
+.env
+node_modules/
+.next/
+dist/
+build/
+.DS_Store
+apps/web/node_modules/
+apps/web/.next/
