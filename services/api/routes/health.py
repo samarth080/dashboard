@@ -8,6 +8,8 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health(request: Request, session: AsyncSession = Depends(get_session)) -> dict:
+async def health(
+    request: Request, session: AsyncSession = Depends(get_session)  # noqa: B008
+) -> dict:
     await session.execute(text("SELECT 1"))
     return {"status": "ok", "run_id": request.state.run_id}
