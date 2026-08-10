@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/engine"
+    test_database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/engine_test"
     redis_url: str = "redis://localhost:6379/0"
     environment: str = "development"
     openai_api_key: str | None = None
