@@ -1,8 +1,8 @@
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from src.core.settings import get_settings
 from src.db import models  # noqa: F401  ensures models register on Base.metadata
 from src.db.base import Base

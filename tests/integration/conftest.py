@@ -1,4 +1,5 @@
 import subprocess
+from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
@@ -14,7 +15,7 @@ def apply_migrations():
 
 
 @pytest_asyncio.fixture
-async def db_session() -> AsyncSession:
+async def db_session() -> AsyncIterator[AsyncSession]:
     async with async_session_factory() as session:
         yield session
         await session.rollback()
