@@ -21,7 +21,7 @@ def upgrade() -> None:
         "runs",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("run_id", postgresql.UUID(as_uuid=True), nullable=False, unique=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_table(
         "llm_calls",
@@ -33,7 +33,7 @@ def upgrade() -> None:
         sa.Column("output_tokens", sa.Integer(), nullable=False),
         sa.Column("latency_ms", sa.Integer(), nullable=False),
         sa.Column("cost_usd", sa.Numeric(10, 6), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
 
 

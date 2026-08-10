@@ -1,11 +1,20 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import ForeignKey, Numeric, String
+from sqlalchemy import DateTime, ForeignKey, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base
+
+
+def utcnow() -> datetime:
+    """Timezone-aware UTC now.
+
+    Stored in `timestamptz` columns so values are unambiguous across the
+    timezones this system ingests data from.
+    """
+    return datetime.now(UTC)
 
 
 class Run(Base):
@@ -15,7 +24,9 @@ class Run(Base):
     run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), unique=True, default=uuid.uuid4, nullable=False
     )
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
 
     llm_calls: Mapped[list["LLMCall"]] = relationship(back_populates="run")
 
@@ -31,6 +42,8 @@ class LLMCall(Base):
     output_tokens: Mapped[int] = mapped_column(nullable=False)
     latency_ms: Mapped[int] = mapped_column(nullable=False)
     cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
 
     run: Mapped["Run"] = relationship(back_populates="llm_calls")
