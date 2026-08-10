@@ -57,6 +57,7 @@ apps/web/Dockerfile
 tests/unit/test_settings.py
 tests/unit/test_logging.py
 tests/unit/test_mock_llm.py
+tests/unit/test_worker_run_id.py
 tests/integration/conftest.py
 tests/integration/test_migration.py
 tests/integration/test_health.py
@@ -996,13 +997,14 @@ git commit -m "feat(api): add FastAPI app with health route and run_id middlewar
 
 ---
 
-### Task 9: Celery worker with ping task
+### Task 9: Celery worker with ping task and run_id propagation
 
 **Files:**
 - Create: `services/worker/__init__.py`
 - Create: `services/worker/celery_app.py`
 - Create: `services/worker/tasks.py`
 - Test: `tests/integration/test_worker_ping.py`
+- Test: `tests/unit/test_worker_run_id.py`
 
 This task requires Redis running: `docker run -d --name m0-test-redis -p 6379:6379 redis:7-alpine`
 
@@ -1055,13 +1057,25 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'services.worker'`
 
 `services/worker/celery_app.py`:
 ```python
-from celery import Celery
+import uuid
 
+from celery import Celery
+from celery.signals import task_prerun
+
+from src.core.logging import configure_logging, set_run_id
 from src.core.settings import get_settings
 
 settings = get_settings()
 
 celery_app = Celery("engine_worker", broker=settings.redis_url, backend=settings.redis_url)
+
+configure_logging()
+
+
+@task_prerun.connect
+def bind_run_id(*args, **kwargs) -> None:
+    """Give every task execution its own run_id so worker logs are traceable."""
+    set_run_id(str(uuid.uuid4()))
 ```
 
 `services/worker/tasks.py`:
@@ -1079,11 +1093,39 @@ def ping() -> str:
 Run: `uv run pytest tests/integration/test_worker_ping.py -v -s`
 Expected: PASS (1 test) — takes a few seconds while the worker subprocess starts.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Write the run_id propagation test**
+
+`tests/unit/test_worker_run_id.py`:
+```python
+from services.worker.celery_app import bind_run_id
+from src.core.logging import get_run_id, run_id_var
+
+
+def test_task_prerun_handler_sets_a_run_id():
+    run_id_var.set(None)
+    assert get_run_id() is None
+
+    bind_run_id()
+
+    first = get_run_id()
+    assert first is not None
+
+    bind_run_id()
+    assert get_run_id() != first  # each task execution gets a fresh id
+
+    run_id_var.set(None)
+```
+
+- [ ] **Step 6: Run the run_id test**
+
+Run: `uv run pytest tests/unit/test_worker_run_id.py -v`
+Expected: PASS (1 test)
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add services/worker/ tests/integration/test_worker_ping.py
-git commit -m "feat(worker): add Celery app and ping task"
+git add services/worker/ tests/integration/test_worker_ping.py tests/unit/test_worker_run_id.py
+git commit -m "feat(worker): add Celery app, ping task, and run_id propagation"
 ```
 
 ---
@@ -1134,7 +1176,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run uvicorn services.api.main:app --host 0.0.0.0 --port 8000 --reload
+    command: >
+      sh -c "uv run alembic upgrade head &&
+             uv run uvicorn services.api.main:app --host 0.0.0.0 --port 8000 --reload"
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/engine
       REDIS_URL: redis://redis:6379/0
@@ -1442,8 +1486,8 @@ Stop the dev server afterward (`kill %1`), `cd` back to repo root.
 Run: `docker compose up --build -d`
 Expected: all five services (`postgres`, `redis`, `api`, `worker`, `web`) report running via `docker compose ps`.
 
-Run: `docker compose exec api uv run alembic upgrade head`
-Expected: exits 0.
+Run: `docker compose logs api | grep -i "running upgrade"`
+Expected: shows the migration applied automatically on container start — no manual `alembic` step required.
 
 Run: `curl -s http://localhost:8000/api/health`
 Expected: `{"status": "ok", "run_id": "..."}`
@@ -1545,7 +1589,7 @@ M0 (Repository Foundation) — COMPLETE
 - `src/db`: SQLAlchemy 2 async engine/session, `Run` and `LLMCall` models
 - `src/llm`: `LLMClient` protocol, `MockLLM`, call-logging helper
 - `services/api`: FastAPI app with `GET /api/health`, run_id middleware, CORS for the web app
-- `services/worker`: Celery app + `ping` task wired to Redis
+- `services/worker`: Celery app + `ping` task wired to Redis, with a `task_prerun` signal binding a fresh run_id per task execution
 - `apps/web`: Next.js/TypeScript nav shell with placeholder pages for every top-level section, Today page wired to `/api/health`
 - Alembic migration `0001_initial` creating `runs` and `llm_calls`
 - Docker Compose stack (postgres+pgvector, redis, api, worker, web)
@@ -1581,7 +1625,8 @@ in scope.
 ## KNOWN LIMITATIONS
 - No real LLM provider wired (OpenAI/Anthropic keys accepted in settings but unused) — intentional, deferred until a milestone has an actual caller.
 - No domain tables beyond `runs`/`llm_calls` — profile/content/job/network schemas arrive in M1+.
-- Integration tests require Docker (Postgres + Redis) running locally; no CI pipeline configured yet.
+- Integration tests require Docker (Postgres + Redis) running locally; no CI pipeline configured yet (deliberately out of scope for M0 — checks run via pre-commit).
+- pgvector is available in the Postgres image but the `vector` extension is NOT enabled; the migration introducing the first embedding column (M2/M4) must run `CREATE EXTENSION vector`.
 
 ## ENVIRONMENT VARIABLES
 See `.env.example`: `DATABASE_URL`, `REDIS_URL`, `ENVIRONMENT`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`.

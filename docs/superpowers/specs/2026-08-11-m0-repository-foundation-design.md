@@ -35,6 +35,9 @@ without rework.
 - Real LLM provider clients (OpenAI/Anthropic) — added when a later
   milestone has an actual caller.
 - Any content/job/network/CRM code.
+- CI pipeline. Checks (`ruff`, `pyright`, `pytest`) run locally via
+  `pre-commit`; wiring them to a hosted runner is deferred until the repo
+  has a remote.
 
 ## Repository layout
 
@@ -47,12 +50,11 @@ src/
   llm/                       # LLMClient Protocol, MockLLM, call logging
   db/                        # SQLAlchemy 2 engine/session, Base
 tests/
-  unit/ integration/ fixtures/
+  unit/ integration/
 alembic/
 docs/
-scripts/
 docker-compose.yml
-pyproject.toml (uv workspace)
+pyproject.toml (single non-packaged uv project)
 ```
 
 ## Components
@@ -79,10 +81,17 @@ configured against it. First migration creates:
   `input_tokens`, `output_tokens`, `latency_ms`, `cost_usd`, `created_at`.
 
 ### `llm`
-`LLMClient` Protocol with `generate(...)` and `structured(...)` methods.
-`MockLLM` returns deterministic, templated output (no network calls) and
-logs every call to `llm_calls` with `cost_usd=0`. This proves the
-abstraction and logging pipeline work before any real provider is wired up.
+`LLMClient` Protocol with `generate(...)` and `structured(...)` methods,
+both returning an `LLMResult` carrying the text plus its own usage metadata
+(model, prompt_version, tokens, latency, cost). `MockLLM` implements the
+protocol with deterministic, templated output and no network calls,
+reporting `cost_usd=0`.
+
+Persistence is a separate concern: a `log_llm_call(session, run, result)`
+helper writes an `LLMResult` to `llm_calls`. Clients do not own a DB
+session — they produce results, callers decide whether to persist them.
+Together these prove the abstraction and the cost-tracking pipeline work
+before any real provider is wired up.
 
 ### `services/api`
 FastAPI app. One real route: `GET /api/health` — checks DB connectivity via
@@ -102,20 +111,29 @@ frontend↔backend wire.
 
 ### Docker Compose
 Services: `postgres` (pgvector-enabled image), `redis`, `api`, `worker`,
-`web`. `docker compose up` gives a fully working local stack with no manual
-steps beyond `.env` setup.
+`web`. The `api` container runs `alembic upgrade head` before starting
+uvicorn, so `docker compose up` yields a fully migrated, working stack with
+no manual steps.
+
+The Postgres image ships pgvector, but migration `0001` does not run
+`CREATE EXTENSION vector` — M0 has no embedding columns. The extension gets
+enabled by the migration that introduces the first vector column (M2 or
+M4). Do not assume it is active before then.
 
 ### Tooling
-`uv` workspace at the repo root manages Python deps across `services/api`,
-`services/worker`, and `src/`. `ruff` for lint, `pyright` for types,
-`pytest` for tests. `pre-commit` runs ruff + pyright + a fast pytest subset
-on commit.
+A single non-packaged uv project (`[tool.uv] package = false`) at the repo
+root manages all Python deps. `src/` and `services/` import as plain
+packages via `uv run` from the root — no per-service manifests, no uv
+workspace members, since nothing in this project is separately
+distributable. `ruff` for lint, `pyright` for types, `pytest` for tests.
+`pre-commit` runs ruff + pyright + a fast pytest subset on commit.
 
 ## Testing plan
 
 **Unit**
 - Settings load correctly from env / `.env.example` shape.
 - `run_id` contextvar propagates into a log record.
+- The Celery `task_prerun` handler sets a `run_id` before a task body runs.
 - `MockLLM.generate` / `.structured` return well-formed output matching the
   protocol's expected shape.
 
