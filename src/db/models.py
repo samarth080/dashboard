@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import DateTime, ForeignKey, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID
@@ -40,7 +41,7 @@ class LLMCall(Base):
     input_tokens: Mapped[int] = mapped_column(nullable=False)
     output_tokens: Mapped[int] = mapped_column(nullable=False)
     latency_ms: Mapped[int] = mapped_column(nullable=False)
-    cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )

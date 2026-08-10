@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Protocol
 
 from pydantic import BaseModel
@@ -10,7 +11,7 @@ class LLMResult(BaseModel):
     input_tokens: int
     output_tokens: int
     latency_ms: int
-    cost_usd: float
+    cost_usd: Decimal
 
 
 class LLMClient(Protocol):

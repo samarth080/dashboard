@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 from pydantic import BaseModel
 
@@ -14,7 +16,7 @@ async def test_generate_returns_llm_result():
     result = await llm.generate("hello", prompt_version="v1")
     assert result.model == "mock-llm"
     assert result.prompt_version == "v1"
-    assert result.cost_usd == 0.0
+    assert result.cost_usd == Decimal("0")
     assert result.text.startswith("[mock response")
     assert result.input_tokens == 1
     assert result.output_tokens > 0

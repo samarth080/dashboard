@@ -1,4 +1,5 @@
 import time
+from decimal import Decimal
 
 from pydantic import BaseModel
 
@@ -19,7 +20,7 @@ class MockLLM:
             input_tokens=len(prompt.split()),
             output_tokens=len(text.split()),
             latency_ms=latency_ms,
-            cost_usd=0.0,
+            cost_usd=Decimal("0"),
         )
 
     async def structured(
