@@ -20,10 +20,7 @@ def utcnow() -> datetime:
 class Run(Base):
     __tablename__ = "runs"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), unique=True, default=uuid.uuid4, nullable=False
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
@@ -35,7 +32,9 @@ class LLMCall(Base):
     __tablename__ = "llm_calls"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id"), nullable=False)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("runs.id"), nullable=False, index=True
+    )
     model: Mapped[str] = mapped_column(String, nullable=False)
     prompt_version: Mapped[str] = mapped_column(String, nullable=False)
     input_tokens: Mapped[int] = mapped_column(nullable=False)
