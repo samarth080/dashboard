@@ -16,8 +16,13 @@ def content_hash(content: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
+def tokenize(content: str) -> list[str]:
+    """Return normalized, case-folded word tokens."""
+    return [token.casefold() for token in _TOKEN.findall(normalize_content(content))]
+
+
 def _shingles(content: str, *, size: int = 3) -> set[tuple[str, ...]]:
-    tokens = [token.casefold() for token in _TOKEN.findall(normalize_content(content))]
+    tokens = tokenize(content)
     if not tokens:
         return set()
     if len(tokens) < size:
