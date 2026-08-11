@@ -1,3 +1,11 @@
+"""Async SQLAlchemy engine/session access for the app; sync access for Alembic.
+
+The app talks to Postgres asynchronously via asyncpg. Alembic drives
+migrations synchronously and can't use that driver, so `to_sync_url`
+derives its psycopg2 URL from the same `database_url` setting rather than
+maintaining a second one.
+"""
+
 from collections.abc import AsyncIterator
 from functools import lru_cache
 

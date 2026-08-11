@@ -1,3 +1,5 @@
+"""ORM models: a `Run` groups the `LLMCall` rows it produces for cost tracking."""
+
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
