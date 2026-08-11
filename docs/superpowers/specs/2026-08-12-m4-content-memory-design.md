@@ -115,7 +115,20 @@ The combination rule is `max(lexical, semantic)`, not a weighted mean. Either
 signal alone is sufficient evidence: a copy-paste scores 1.0 lexically, a
 reworded post scores high semantically, and averaging would dilute each strong
 signal with the other's weakness. Both sub-scores are persisted so a verdict can
-always be explained. An exact `content_hash` match short-circuits to `1.0`.
+always be explained.
+
+Exact-duplicate text needs no special case: `content_hash` is a digest of the
+same normalized text the tokenizer reads, so identical content already scores
+1.0 lexically. `content_hash` earns its place as a stored column for cheap SQL
+equality, not as a branch in the scorer.
+
+A post record with no stored vector is scored lexically only. That is a
+deliberate fallback, not a failure, so `score_pair` computes a semantic score
+only when both sides supply an embedding.
+
+Word-trigram Jaccard collapses to all-or-nothing below three tokens, so very
+short posts — X posts especially — get a weak lexical signal and lean on the
+semantic one.
 
 Candidate selection filters to:
 

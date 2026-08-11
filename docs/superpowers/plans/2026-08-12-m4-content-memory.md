@@ -184,7 +184,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from src.research.dedup import content_hash, token_similarity
+from src.research.dedup import token_similarity
 
 DuplicateVerdict = Literal["clear", "warn", "block"]
 
@@ -234,9 +234,12 @@ def score_pair(
     reworded post scores high semantically, so either signal alone is
     sufficient evidence of duplication. Averaging would dilute each strong
     signal with the other's weakness.
+
+    Identical text needs no special case: it already scores 1.0 lexically.
+    A semantic score is computed only when both sides supply an embedding; a
+    post record with no stored vector is scored lexically only, by design.
     """
-    exact = content_hash(candidate_text) == content_hash(neighbour_text)
-    lexical = 1.0 if exact else token_similarity(candidate_text, neighbour_text)
+    lexical = token_similarity(candidate_text, neighbour_text)
     semantic: float | None = None
     if candidate_embedding is not None and neighbour_embedding is not None:
         semantic = cosine_similarity(candidate_embedding, neighbour_embedding)
@@ -1889,7 +1892,12 @@ async def evaluate_duplicate(
     for candidate in candidates:
         # Only compare vectors from the same model: different models do not
         # share a space, and cosine_similarity raises on a dimension mismatch.
-        same_space = candidate.embedding_model == embedding_model
+        # Require an actual vector, not just a matching model name: the column
+        # is nullable, and a one-sided embedding would silently drop the
+        # semantic signal.
+        same_space = (
+            candidate.embedding is not None and candidate.embedding_model == embedding_model
+        )
         components = score_pair(
             candidate_text=text,
             neighbour_text=candidate.content,
