@@ -15,6 +15,13 @@ def test_cosine_similarity_clamps_negatives_to_zero():
     assert cosine_similarity([1.0, 0.0], [-1.0, 0.0]) == 0.0
 
 
+def test_cosine_similarity_upper_bound_survives_float_rounding():
+    # Exact float arithmetic on identical-but-not-unit vectors can round
+    # dot / (norm * norm) to a hair above 1.0 (e.g. 1.0000000000000002).
+    # The result must still respect the documented [0, 1] contract.
+    assert cosine_similarity([0.1] * 10, [0.1] * 10) <= 1.0
+
+
 def test_cosine_similarity_rejects_mismatched_dimensions():
     with pytest.raises(ValueError, match="different dimensions"):
         cosine_similarity([1.0, 0.0], [1.0, 0.0, 0.0])

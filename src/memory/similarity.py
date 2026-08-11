@@ -47,7 +47,7 @@ def cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
     right_norm = math.sqrt(sum(b * b for b in right))
     if left_norm == 0.0 or right_norm == 0.0:
         return 0.0
-    return max(0.0, dot / (left_norm * right_norm))
+    return min(1.0, max(0.0, dot / (left_norm * right_norm)))
 
 
 def score_pair(
