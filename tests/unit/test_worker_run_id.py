@@ -1,9 +1,8 @@
 from services.worker.celery_app import bind_run_id
-from src.core.logging import get_run_id, run_id_var
+from src.core.logging import get_run_id
 
 
 def test_task_prerun_handler_sets_a_run_id():
-    run_id_var.set(None)
     assert get_run_id() is None
 
     bind_run_id()
@@ -13,5 +12,3 @@ def test_task_prerun_handler_sets_a_run_id():
 
     bind_run_id()
     assert get_run_id() != first  # each task execution gets a fresh id
-
-    run_id_var.set(None)

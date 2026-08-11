@@ -3,7 +3,9 @@ import logging
 import sys
 from datetime import UTC, datetime
 
-from src.core.logging import JSONFormatter, run_id_var, set_run_id
+import pytest
+
+from src.core.logging import JSONFormatter, get_run_id, run_context, set_run_id
 
 
 def test_json_formatter_includes_run_id_and_message():
@@ -22,11 +24,9 @@ def test_json_formatter_includes_run_id_and_message():
     assert payload["run_id"] == "abc-123"
     assert payload["message"] == "hello"
     assert payload["level"] == "INFO"
-    run_id_var.set(None)
 
 
 def test_json_formatter_run_id_is_none_by_default():
-    run_id_var.set(None)
     record = logging.LogRecord(
         name="test", level=logging.INFO, pathname=__file__, lineno=1,
         msg="no run", args=(), exc_info=None,
@@ -77,3 +77,34 @@ def test_json_formatter_merges_extra_fields():
     )
     payload = json.loads(JSONFormatter().format(record))
     assert payload["job_id"] == 7
+
+
+def test_run_context_sets_and_restores_run_id():
+    """FIX 5 regression test.
+
+    ContextVar.set() returns a Token needed to restore the previous value;
+    the old set_run_id() threw it away, so a run_id set for one unit of
+    work could never be restored and leaked into whatever ran next in the
+    same context.
+    """
+    assert get_run_id() is None
+    with run_context("outer") as yielded:
+        assert yielded == "outer"
+        assert get_run_id() == "outer"
+    assert get_run_id() is None
+
+
+def test_run_context_nesting_restores_the_outer_value():
+    with run_context("outer"):
+        assert get_run_id() == "outer"
+        with run_context("inner"):
+            assert get_run_id() == "inner"
+        assert get_run_id() == "outer"
+    assert get_run_id() is None
+
+
+def test_run_context_restores_previous_value_even_if_the_block_raises():
+    with run_context("outer"):
+        with pytest.raises(RuntimeError), run_context("inner"):
+            raise RuntimeError("boom")
+        assert get_run_id() == "outer"

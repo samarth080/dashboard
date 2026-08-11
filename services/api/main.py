@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from services.api.routes.health import router as health_router
-from src.core.logging import configure_logging, set_run_id
+from src.core.logging import configure_logging, run_context
 
 configure_logging()
 
@@ -21,9 +21,12 @@ app.add_middleware(
 @app.middleware("http")
 async def run_id_middleware(request: Request, call_next):
     run_id = str(uuid.uuid4())
-    set_run_id(run_id)
     request.state.run_id = run_id
-    response = await call_next(request)
+    # A request has a well-defined scope to wrap, so run_context (not
+    # set_run_id) keeps this request's run_id from leaking into whatever
+    # runs next in the same context.
+    with run_context(run_id):
+        response = await call_next(request)
     response.headers["X-Run-Id"] = run_id
     return response
 
