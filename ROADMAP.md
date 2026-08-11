@@ -15,7 +15,7 @@ updated, and `HANDOVER.md` reflects reality.
 | M0 | Repository foundation | **Complete** |
 | M1 | Personal Brain | **Complete** |
 | M2 | Research Engine | **Complete** |
-| M3 | Content Engine | Not started |
+| M3 | Content Engine | **Complete** |
 | M4 | Content Memory | Not started |
 | M5 | Job Engine | Not started |
 | M6 | Network CRM | Not started |
@@ -96,7 +96,10 @@ packs with claim/excerpt/document provenance; and a functional Research UI.
 
 ## M3 — Content Engine
 
-**Next milestone; design not started.**
+Design and completed implementation plan:
+
+- `docs/superpowers/specs/2026-08-11-m3-content-engine-design.md`
+- `docs/superpowers/plans/2026-08-11-m3-content-engine.md`
 
 Topic → angles → outline → draft → voice transform → fact check → quality
 evaluation → rewrite → platform adaptation → approval.
@@ -114,7 +117,17 @@ evaluation → rewrite → platform adaptation → approval.
 
 Should produce genuinely usable drafts before any platform API is connected.
 
+Delivered: persisted append-only artifacts for every explicit stage;
+eleven selectable angle types; evidence-claim mappings; deterministic fact
+checking that stops foreign or unsupported claims; explainable deterministic
+and model quality sub-scores; quality-guided rewrite; separate LinkedIn and X
+adapters and prompts; local Level 1-by-default approval records; manual stage
+revisions; request-linked model usage; and a functional Content workspace. No
+platform API or external side effect is present.
+
 ## M4 — Content Memory
+
+**Next milestone; design not started.**
 
 Post history, embeddings, semantic duplicate detection, analytics model, mock
 analytics.

@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from src.brain import models as brain_models  # noqa: F401  register M1 models
+from src.content import models as content_models  # noqa: F401  register M3 models
 from src.core.settings import get_settings
 from src.db import models  # noqa: F401  ensures models register on Base.metadata
 from src.db.base import Base

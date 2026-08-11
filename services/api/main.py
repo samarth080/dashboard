@@ -5,9 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from services.api.routes.brain import router as brain_router
+from services.api.routes.content import router as content_router
 from services.api.routes.health import router as health_router
 from services.api.routes.research import router as research_router
 from src.brain.service import BrainError
+from src.content.service import ContentError
 from src.core.logging import configure_logging, run_context
 from src.llm.mock import MockLLM
 from src.research.service import ResearchError
@@ -54,6 +56,15 @@ async def research_error_handler(request: Request, exc: ResearchError) -> JSONRe
     )
 
 
+@app.exception_handler(ContentError)
+async def content_error_handler(request: Request, exc: ContentError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": str(exc), "run_id": request.state.run_id},
+    )
+
+
 app.include_router(health_router, prefix="/api")
 app.include_router(brain_router, prefix="/api")
 app.include_router(research_router, prefix="/api")
+app.include_router(content_router, prefix="/api")

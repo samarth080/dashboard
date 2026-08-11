@@ -8,32 +8,37 @@ Last updated: 2026-08-11 (Asia/Kolkata)
 
 ## Checkpoint state
 
-M0, M1, and M2 are complete and included in repository history. Run
-`git log -1 --oneline` for the exact current checkpoint revision.
+M0, M1, and M2 are included in commit
+`4aa5fc1 feat: complete personal brain and research engine`.
+
+M3 is complete and verified in the current working tree but is not committed by
+this handover. Do not discard or reset the working tree before creating the M3
+checkpoint.
 
 ## Milestone status
 
 - M0 — Repository Foundation: complete
 - M1 — Personal Brain: complete
 - M2 — Research Engine: complete
-- Next: M3 — Content Engine (not started)
+- M3 — Content Engine: complete in the working tree
+- Next: M4 — Content Memory (not started)
 
 ## Latest local runtime check
 
-The development database was migrated through `0003`. The API and web app were
-also smoke-tested locally during M1:
+The development database is migrated through `0004`. The API and web app are
+running locally at this handover:
 
 - `GET http://localhost:8000/api/health` returned `200` with `status: ok` and a
   request `run_id`.
-- `GET http://localhost:3000/settings` returned `200` and compiled the Personal
-  Brain editor successfully.
-- The production Next.js build passed again immediately before the M1/M2
-  checkpoint.
+- `GET http://localhost:8000/openapi.json` returned `200` with the M3 routes.
+- `GET http://localhost:8000/api/content/workflows` returned `200`.
+- `GET http://localhost:3000/content` returned `200` and compiled the Content
+  workspace successfully.
+- The production Next.js build also passed.
 
-The API and web development processes are not currently running. OrbStack was
-restarted during M2 verification; the isolated `m0-test-pg` and
-`m0-test-redis` containers currently provide Postgres on `5432` and Redis on
-`6379`. Use the commands below before opening the UI URLs again.
+The isolated `m0-test-pg` and `m0-test-redis` containers provide Postgres on
+`5432` and Redis on `6379`. If the API/web terminal sessions stop, use the
+commands below to restart them.
 
 ## What exists
 
@@ -58,6 +63,13 @@ restarted during M2 verification; the isolated `m0-test-pg` and
   already linked to the topic.
 - Functional `/research` UI for sources, manual ingestion, ranking, extraction,
   topic inspection, and evidence entry.
+- Persisted content workflows for angle, outline, draft, voice transform,
+  deterministic fact check, explainable quality evaluation, rewrite, separate
+  LinkedIn/X adaptation, and local approval.
+- Append-only content artifact revisions with M2 claim mappings and prompt,
+  model, cost, and request-run provenance.
+- Functional `/content` UI for workflow creation, stage/report inspection,
+  manual revisions, and local approve/reject decisions.
 - Deterministic `MockLLM`, still the development/test default; no credentials
   are required.
 - Daily LLM budget check and a 100,000-character per-analysis input limit.
@@ -74,6 +86,8 @@ Migrations:
 - `0003_research_engine`: enables `vector`; adds `research_sources`,
   `raw_documents`, `scoring_configs`, `topic_candidates`, `topic_documents`,
   `evidence_packs`, `claims`, and `evidence_sources`
+- `0004_content_engine`: adds `content_workflows`, `content_artifacts`,
+  `content_claim_references`, and `content_approvals`
 
 The integration suite applies migrations to `TEST_DATABASE_URL`, refuses to use
 the dev URL, isolates commits with an outer transaction, disposes the async
@@ -102,16 +116,22 @@ engine between event loops, and compares live schema metadata for drift.
 - `GET /api/research/topics/{topic_id}`
 - `POST /api/research/topics/{topic_id}/rescore`
 - `GET|PUT /api/research/topics/{topic_id}/evidence`
+- `GET|POST /api/content/workflows`
+- `GET /api/content/workflows/{workflow_id}`
+- `POST /api/content/workflows/{workflow_id}/run`
+- `PUT /api/content/workflows/{workflow_id}/artifacts/{stage}`
+- `POST /api/content/workflows/{workflow_id}/approval`
 
 ## Verification
 
 - Ruff lint and format check: passing
 - Pyright: passing with zero errors
-- Unit tests: 43 passing
-- Integration tests: 20 passing against Postgres and Redis
+- Unit tests: 52 passing
+- Integration tests: 22 passing against Postgres and Redis
 - Next.js production build: passing
 - Alembic/model drift: empty
-- Fresh migration through `0003`: passing
+- Fresh migration from empty database through `0004`: passing
+- Alembic/model drift: empty
 - pgvector extension and vector round-trip: passing
 
 Integration tests require reachable Postgres databases named by `DATABASE_URL`
@@ -128,7 +148,8 @@ platform side effects without current official documentation in that ledger.
 - Single-user and unauthenticated by design.
 - `MockLLM` produces structurally valid but not meaningful analysis unless a
   canned response is injected; by default automated extraction recommends no
-  topics. Manual document/topic/evidence workflows remain usable.
+  topics. Content generation uses conservative evidence-only fallbacks locally,
+  but high-quality voice transformation still needs a real model or manual edit.
 - pgvector is enabled and embeddings can be stored, but no real embedding
   provider or similarity index is configured yet.
 - Memory has explicit storage boundaries but no autonomous ingestion or recall
@@ -150,6 +171,7 @@ Then open:
 - Dashboard: `http://localhost:3000`
 - Personal Brain: `http://localhost:3000/settings`
 - Research workspace: `http://localhost:3000/research`
+- Content studio: `http://localhost:3000/content`
 - API docs: `http://localhost:8000/docs`
 - Health check: `http://localhost:8000/api/health`
 
@@ -188,7 +210,7 @@ cd apps/web && npm run build
 
 ## Next task
 
-Design M3 as its own milestone before implementation. Preserve explicit
-intermediate stages (angle, outline, draft, voice transform, fact check,
-quality evaluation, rewrite, and platform adaptation), consume M2 evidence
-packs, keep prompts versioned, and require Level 1 approval for public actions.
+Design M4 Content Memory before implementation: persist post history and
+performance context, add provider-tagged embeddings and configurable semantic
+duplicate detection, and prevent a highly similar draft from advancing toward
+approval. Use mock analytics first and keep publishing deferred.

@@ -8,11 +8,12 @@ see `ROADMAP.md` for that.
 
 ## Current state
 
-Milestones **M0 (Repository Foundation)**, **M1 (Personal Brain)**, and **M2
-(Research Engine)** are complete. The system has editable personal context,
-safe public-feed ingestion, normalized and deduplicated documents, clustered
-and ranked research topics, and source-grounded evidence packs. Content
-generation, jobs, and network features have not started.
+Milestones **M0 (Repository Foundation)**, **M1 (Personal Brain)**, **M2
+(Research Engine)**, and **M3 (Content Engine)** are complete in the current
+working tree. The system has editable personal context, source-grounded
+research, and an inspectable evidence-to-platform-draft workflow that ends at
+local approval. Content memory, jobs, network features, and external platform
+actions have not started.
 
 ## Shape of the system
 
@@ -23,6 +24,7 @@ services/worker/   Celery worker (Redis broker + result backend)
 src/               Shared library code, imported by both services
   core/              settings, structured logging, run_id context
   brain/             profile, interests, memory, settings, voice workflow
+  content/           staged generation, grounding, quality, adapters, approval
   db/                SQLAlchemy 2 async engine/session, models
   llm/               LLM protocol, prompt registry, MockLLM, call persistence
   research/          sources, normalization, dedup, extraction, ranking, evidence
@@ -114,6 +116,16 @@ Migration `0003_research_engine` enables pgvector and adds:
   provenance, deterministic cluster keys, and source-document membership.
 - **`evidence_packs`**, **`claims`**, and **`evidence_sources`** — topic theses,
   explicit verification status, and exact document-backed excerpts.
+
+Migration `0004_content_engine` adds:
+
+- **`content_workflows`** — one explicit topic/evidence attempt with angle,
+  requested platforms, finite status, current stage, and latest request run.
+- **`content_artifacts`** and **`content_claim_references`** — append-only stage
+  revisions with prompt/model/run provenance and generated-statement mappings
+  to M2 evidence claims. Invalid claimed UUIDs remain inspectable but unresolved.
+- **`content_approvals`** — per-platform pending/approved/rejected local review
+  with required level, actor, reason, decision time, and request run.
 
 ### Conventions later milestones must follow
 
@@ -215,6 +227,45 @@ supporting excerpt.
 - `POST /api/research/topics/{topic_id}/rescore`
 - `GET|PUT /api/research/topics/{topic_id}/evidence`
 
+## Content Engine
+
+`src/content/service.py` owns a finite, explicit pipeline: angle, outline,
+draft, voice transform, deterministic fact check, quality evaluation, rewrite,
+and independent platform adaptation. Every execution is user-triggered; there
+is no autonomous loop. Artifacts are append-only revisions, so reruns and
+manual edits retain their history.
+
+Model-backed stages use prompt files under `prompts/content-*/v1.md` and log
+every call against the HTTP request `run_id`. MockLLM remains the default. When
+it returns empty structured content, conservative deterministic fallbacks build
+copy only from the evidence thesis and supported claims.
+
+Fact checking does not ask a model to verify itself. It resolves each generated
+factual-statement mapping against the workflow's M2 evidence pack and requires
+the claim to be supported by at least one source excerpt. The check runs after
+voice transformation and again after rewrite, each platform adaptation, and a
+manual platform edit; approval rechecks the latest adaptation. A failed check
+is persisted, sets `fact_check_failed`, and prevents later stages or approval.
+
+The AI-slop detector stores deterministic specificity, lexical diversity,
+sentence rhythm, formatting restraint, and cliché-avoidance sub-scores plus a
+versioned model judgement for authenticity, clarity, and usefulness. Scores
+remain inspectable guidance rather than objective truth.
+
+`LinkedInContentAdapter` and `XContentAdapter` own different prompts and
+fallbacks. The X fallback builds a native numbered thread and never truncates a
+LinkedIn draft. `AutomationPolicy` requires explicit local approval for each
+requested platform using the configured approval level. Approval never invokes
+an external service.
+
+### Content HTTP surface
+
+- `GET|POST /api/content/workflows`
+- `GET /api/content/workflows/{workflow_id}`
+- `POST /api/content/workflows/{workflow_id}/run`
+- `PUT /api/content/workflows/{workflow_id}/artifacts/{stage}`
+- `POST /api/content/workflows/{workflow_id}/approval`
+
 ## LLM abstraction
 
 `src/llm/protocol.py` defines `LLMClient`, the contract every provider
@@ -243,8 +294,9 @@ quality is explicitly needed and its budget behavior can be tested.
 
 Prompts live under `prompts/<name>/<version>.md` and are loaded through the
 path-safe registry in `src/llm/prompts.py`. Callers store a logical version such
-as `voice-analysis/v1` or `research-topic-extraction/v1` in both `llm_calls` and
-the derived record; prompt strings do not live in routes or workflow code.
+as `voice-analysis/v1`, `research-topic-extraction/v1`, or `content-draft/v1` in
+both `llm_calls` and the derived record; prompt strings do not live in routes or
+workflow code.
 
 ## Background processing
 

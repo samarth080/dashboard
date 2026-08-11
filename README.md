@@ -9,7 +9,8 @@ workflows without unsafe automation.
 - **M0 — Repository Foundation:** complete
 - **M1 — Personal Brain:** complete
 - **M2 — Research Engine:** complete
-- **Next:** M3 — Content Engine
+- **M3 — Content Engine:** complete in the current working tree
+- **Next:** M4 — Content Memory
 - **External integrations:** blocked until capabilities are verified against
   current official documentation
 
@@ -17,8 +18,11 @@ M1 provides a primary profile, career direction, user preferences, a weighted
 interest hierarchy, seven explicit memory domains, confirmed writing samples,
 and versioned voice analysis. M2 adds safe RSS/Atom ingestion, document
 normalization and deduplication, structured topic extraction and clustering,
-configurable ranking, pgvector storage, and evidence packs. The `/settings` and
-`/research` pages are the working product surfaces.
+configurable ranking, pgvector storage, and evidence packs. M3 adds a persisted
+evidence-to-draft pipeline, deterministic fact checking, explainable quality
+evaluation, separate LinkedIn/X adaptations, append-only manual revisions, and
+local approval. The working product surfaces are `/settings`, `/research`, and
+`/content`.
 
 ## Quick start
 
@@ -35,12 +39,14 @@ Open:
 - Dashboard: `http://localhost:3000`
 - Personal Brain: `http://localhost:3000/settings`
 - Research workspace: `http://localhost:3000/research`
+- Content studio: `http://localhost:3000/content`
 - API docs: `http://localhost:8000/docs`
 - Health check: `http://localhost:8000/api/health`
 
 The API container applies Alembic migrations before starting. Development uses
-`MockLLM`, so no provider credentials are required. Its default voice output is
-structurally valid but intentionally not a substitute for a real model.
+`MockLLM`, so no provider credentials are required. Content stages use
+conservative evidence-first fallbacks when the mock returns no copy; those
+fallbacks exercise the workflow but are not a substitute for a real model.
 
 ## First-use flow
 
@@ -53,6 +59,9 @@ structurally valid but intentionally not a substitute for a real model.
    `voice-analysis/v1` prompt and logs usage against the request `run_id`.
 6. Open `/research`, register a public RSS/Atom feed or ingest a document, then
    create or extract ranked topics and attach evidence excerpts.
+7. Open `/content`, create a workflow from a topic with supported evidence,
+   inspect every generated stage, revise the platform drafts, and record local
+   approval. Approval does not publish anything.
 
 Public posting, messaging, scraping, job applications, and platform account
 connections are not implemented.
@@ -103,6 +112,10 @@ database and rolls back test writes, including explicit commits.
   — implemented M2 design
 - [`docs/superpowers/plans/2026-08-11-m2-research-engine.md`](docs/superpowers/plans/2026-08-11-m2-research-engine.md)
   — completed M2 implementation checklist
+- [`docs/superpowers/specs/2026-08-11-m3-content-engine-design.md`](docs/superpowers/specs/2026-08-11-m3-content-engine-design.md)
+  — implemented M3 design
+- [`docs/superpowers/plans/2026-08-11-m3-content-engine.md`](docs/superpowers/plans/2026-08-11-m3-content-engine.md)
+  — completed M3 implementation checklist
 
 The M0 design and plan under `docs/superpowers/` are historical records. The
 roadmap, architecture, and handover are authoritative for current behavior.

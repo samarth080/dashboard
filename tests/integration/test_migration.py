@@ -20,6 +20,10 @@ async def test_runs_and_llm_calls_tables_exist(db_session: AsyncSession):
     assert "raw_documents" in tables
     assert "topic_candidates" in tables
     assert "evidence_packs" in tables
+    assert "content_workflows" in tables
+    assert "content_artifacts" in tables
+    assert "content_claim_references" in tables
+    assert "content_approvals" in tables
 
 
 @pytest.mark.asyncio
