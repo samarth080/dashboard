@@ -244,9 +244,7 @@ def score_pair(
     return SimilarityComponents(lexical=lexical, semantic=semantic, score=score)
 
 
-def verdict_for(
-    score: float, *, warn_threshold: float, block_threshold: float
-) -> DuplicateVerdict:
+def verdict_for(score: float, *, warn_threshold: float, block_threshold: float) -> DuplicateVerdict:
     if warn_threshold > block_threshold:
         raise ValueError("warn threshold cannot exceed block threshold")
     if score >= block_threshold:
@@ -685,9 +683,7 @@ class DuplicateCheck(MemoryTimestampMixin, Base):
     nearest_post_record_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("post_records.id", ondelete="SET NULL"), index=True
     )
-    components: Mapped[list[dict[str, object]]] = mapped_column(
-        JSON, nullable=False, default=list
-    )
+    components: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False, default=list)
     overridden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     override_reason: Mapped[str | None] = mapped_column(Text)
     run_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -1020,15 +1016,11 @@ def test_update_rejects_an_empty_payload():
 
 def test_duplicate_config_rejects_warn_above_block():
     with pytest.raises(ValidationError, match="cannot exceed"):
-        DuplicateConfigCreate(
-            version="v2", warn_threshold="0.900", block_threshold="0.800"
-        )
+        DuplicateConfigCreate(version="v2", warn_threshold="0.900", block_threshold="0.800")
 
 
 def test_duplicate_config_accepts_valid_thresholds():
-    config = DuplicateConfigCreate(
-        version="v2", warn_threshold="0.650", block_threshold="0.900"
-    )
+    config = DuplicateConfigCreate(version="v2", warn_threshold="0.650", block_threshold="0.900")
     assert config.cross_platform_check is False
     assert config.lookback_days is None
 ```
@@ -1584,9 +1576,7 @@ async def test_duplicate_config_version_must_be_unique(db_session: AsyncSession)
     with pytest.raises(ContentMemoryConflict, match="already exists"):
         await service.create_duplicate_config(
             db_session,
-            DuplicateConfigCreate(
-                version="v1", warn_threshold="0.600", block_threshold="0.800"
-            ),
+            DuplicateConfigCreate(version="v1", warn_threshold="0.600", block_threshold="0.800"),
         )
 
 
@@ -2344,7 +2334,7 @@ from src.llm.embeddings import EmbeddingProvider
 and update the approval endpoint body so the call passes `embedder=embedder`, adding this parameter to the handler signature:
 
 ```python
-    embedder: EmbeddingProvider = Depends(get_embedder),  # noqa: B008
+embedder: EmbeddingProvider = (Depends(get_embedder),)  # noqa: B008
 ```
 
 - [ ] **Step 6: Verify**
@@ -2451,7 +2441,11 @@ async def test_empty_update_is_rejected(memory_client: AsyncClient):
 async def test_metric_snapshots_are_append_only(memory_client: AsyncClient):
     created = await memory_client.post(
         "/api/memory/posts",
-        json={"platform": "linkedin", "content": "Measured over time.", "posted_at": "2026-08-01T00:00:00Z"},
+        json={
+            "platform": "linkedin",
+            "content": "Measured over time.",
+            "posted_at": "2026-08-01T00:00:00Z",
+        },
     )
     post_id = created.json()["id"]
     for _ in range(3):
