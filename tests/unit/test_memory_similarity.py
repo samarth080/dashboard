@@ -54,6 +54,28 @@ def test_unrelated_text_scores_low():
     assert components.semantic is None
 
 
+def test_one_sided_embedding_falls_back_to_lexical_only():
+    # A NULL vector on one side (e.g. embedding backfill hasn't run yet) is
+    # not an error: it falls back to lexical-only scoring by design.
+    components = score_pair(
+        candidate_text="Evidence first, always.",
+        neighbour_text="Evidence first, always.",
+        candidate_embedding=[1.0, 0.0],
+    )
+    assert components.semantic is None
+    assert components.score == components.lexical
+
+
+def test_short_text_below_three_tokens_has_no_lexical_signal():
+    # token_similarity uses word trigrams, so texts with fewer than three
+    # tokens each collapse to all-or-nothing: any wording difference scores
+    # 0.0 lexically. This is inherited M2 behavior, not fixed here, but it
+    # matters in M4 because X posts are exactly this short — the semantic
+    # signal has to carry short posts since the lexical one cannot.
+    components = score_pair(candidate_text="ship fast", neighbour_text="ship fast now")
+    assert components.lexical == 0.0
+
+
 def test_score_takes_the_max_of_lexical_and_semantic():
     # Different words, so lexical is near zero, but the vectors agree.
     components = score_pair(

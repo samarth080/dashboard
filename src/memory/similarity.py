@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from src.research.dedup import content_hash, token_similarity
+from src.research.dedup import token_similarity
 
 DuplicateVerdict = Literal["clear", "warn", "block"]
 
@@ -37,6 +37,18 @@ def cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
     Raises on a dimension mismatch rather than returning a meaningless number:
     vectors from different embedding models do not share a space, and silently
     scoring them would make duplicate detection quietly wrong.
+
+    An empty vector raises for the same reason, but an all-zero vector is a
+    valid embedding and returns 0.0 rather than dividing by zero: the M4
+    embedder (Task 2's MockEmbedder) returns a zero vector for empty text, and
+    that case must score as "no signal", not crash.
+
+    The lower bound is clamped to 0.0 because anti-correlated vectors are not
+    evidence of duplication — a negative cosine should read the same as "no
+    similarity", not "similarity below zero". The upper bound is clamped to
+    1.0 to absorb floating-point rounding: exact arithmetic on non-unit
+    vectors can push `dot / (norm * norm)` a hair past 1.0, which would
+    otherwise violate this function's own [0, 1] contract.
     """
     if len(left) != len(right):
         raise ValueError("cannot compare embeddings of different dimensions")
@@ -63,9 +75,13 @@ def score_pair(
     reworded post scores high semantically, so either signal alone is
     sufficient evidence of duplication. Averaging would dilute each strong
     signal with the other's weakness.
+
+    `semantic` is computed only when both embeddings are present. A one-sided
+    or absent embedding is not an error: post history rows may have a NULL
+    vector (e.g. embedding backfill hasn't run yet), and such a row is scored
+    lexically only, by design, rather than rejected.
     """
-    exact = content_hash(candidate_text) == content_hash(neighbour_text)
-    lexical = 1.0 if exact else token_similarity(candidate_text, neighbour_text)
+    lexical = token_similarity(candidate_text, neighbour_text)
     semantic: float | None = None
     if candidate_embedding is not None and neighbour_embedding is not None:
         semantic = cosine_similarity(candidate_embedding, neighbour_embedding)
@@ -74,6 +90,17 @@ def score_pair(
 
 
 def verdict_for(score: float, *, warn_threshold: float, block_threshold: float) -> DuplicateVerdict:
+    """Map a score to a verdict against externally supplied thresholds.
+
+    Bands are inclusive at the lower edge: a score exactly equal to
+    `block_threshold` blocks, and a score exactly equal to `warn_threshold`
+    warns. A threshold is a promise ("at this level or above, act"), and an
+    exclusive edge would silently let the boundary value itself through.
+
+    Threshold ordering is validated here even though the database constraint
+    and the request schema also validate it: a pure function should not trust
+    its caller, and this one is cheap enough to check unconditionally.
+    """
     if warn_threshold > block_threshold:
         raise ValueError("warn threshold cannot exceed block threshold")
     if score >= block_threshold:
