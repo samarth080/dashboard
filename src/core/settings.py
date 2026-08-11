@@ -1,4 +1,7 @@
+"""Process-wide configuration, loaded from the environment (and `.env` locally)."""
+
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,7 +12,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/engine"
     test_database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/engine_test"
     redis_url: str = "redis://localhost:6379/0"
-    environment: str = "development"
+    environment: Literal["development", "test", "production"] = "development"
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
 
