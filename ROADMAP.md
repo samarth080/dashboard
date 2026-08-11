@@ -16,7 +16,7 @@ updated, and `HANDOVER.md` reflects reality.
 | M1 | Personal Brain | **Complete** |
 | M2 | Research Engine | **Complete** |
 | M3 | Content Engine | **Complete** |
-| M4 | Content Memory | Not started |
+| M4 | Content Memory | Design approved |
 | M5 | Job Engine | Not started |
 | M6 | Network CRM | Not started |
 | M7 | Integrations | Blocked on capability verification |
@@ -127,7 +127,9 @@ platform API or external side effect is present.
 
 ## M4 — Content Memory
 
-**Next milestone; design not started.**
+**Next milestone; design approved, implementation not started.**
+
+Design: `docs/superpowers/specs/2026-08-12-m4-content-memory-design.md`
 
 Post history, embeddings, semantic duplicate detection, analytics model, mock
 analytics.

@@ -116,6 +116,8 @@ database and rolls back test writes, including explicit commits.
   — implemented M3 design
 - [`docs/superpowers/plans/2026-08-11-m3-content-engine.md`](docs/superpowers/plans/2026-08-11-m3-content-engine.md)
   — completed M3 implementation checklist
+- [`docs/superpowers/specs/2026-08-12-m4-content-memory-design.md`](docs/superpowers/specs/2026-08-12-m4-content-memory-design.md)
+  — approved M4 design, not yet implemented
 
 The M0 design and plan under `docs/superpowers/` are historical records. The
 roadmap, architecture, and handover are authoritative for current behavior.
