@@ -3,6 +3,11 @@
 Date: 2026-08-11
 Status: Approved
 
+> Historical design record. Review fixes changed some implementation details
+> (notably UUID run primary keys, timezone-aware timestamps, Decimal costs,
+> lazy database engines, and structured-result usage metadata). `ARCHITECTURE.md`
+> and `HANDOVER.md` are authoritative for the current system.
+
 ## Purpose
 
 Establish the monorepo skeleton for the Personal Career + Content + Network

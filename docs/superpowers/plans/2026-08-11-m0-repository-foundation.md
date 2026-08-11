@@ -1,5 +1,11 @@
 # M0 Repository Foundation Implementation Plan
 
+> **Status: Complete.** This is the original execution plan, retained as a
+> historical record. Its unchecked step boxes and code snippets are not a live
+> status report; review fixes deliberately hardened several details after the
+> initial tasks. Use `ROADMAP.md`, `ARCHITECTURE.md`, and `HANDOVER.md` for the
+> current state.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stand up the monorepo skeleton (FastAPI, Next.js, Celery/Redis, Postgres, LLM abstraction with MockLLM) that later milestones build domain logic on top of — no product features, just a working, tested, observable foundation.

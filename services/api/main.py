@@ -2,13 +2,20 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from services.api.routes.brain import router as brain_router
 from services.api.routes.health import router as health_router
+from services.api.routes.research import router as research_router
+from src.brain.service import BrainError
 from src.core.logging import configure_logging, run_context
+from src.llm.mock import MockLLM
+from src.research.service import ResearchError
 
 configure_logging()
 
 app = FastAPI(title="Personal Career Engine API")
+app.state.llm_client = MockLLM()
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,4 +38,22 @@ async def run_id_middleware(request: Request, call_next):
     return response
 
 
+@app.exception_handler(BrainError)
+async def brain_error_handler(request: Request, exc: BrainError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": str(exc), "run_id": request.state.run_id},
+    )
+
+
+@app.exception_handler(ResearchError)
+async def research_error_handler(request: Request, exc: ResearchError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": str(exc), "run_id": request.state.run_id},
+    )
+
+
 app.include_router(health_router, prefix="/api")
+app.include_router(brain_router, prefix="/api")
+app.include_router(research_router, prefix="/api")

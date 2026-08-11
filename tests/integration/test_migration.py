@@ -16,6 +16,18 @@ async def test_runs_and_llm_calls_tables_exist(db_session: AsyncSession):
     tables = {row[0] for row in result}
     assert "runs" in tables
     assert "llm_calls" in tables
+    assert "research_sources" in tables
+    assert "raw_documents" in tables
+    assert "topic_candidates" in tables
+    assert "evidence_packs" in tables
+
+
+@pytest.mark.asyncio
+async def test_pgvector_extension_is_enabled(db_session: AsyncSession):
+    extension = await db_session.scalar(
+        text("SELECT extname FROM pg_extension WHERE extname = 'vector'")
+    )
+    assert extension == "vector"
 
 
 @pytest.mark.asyncio

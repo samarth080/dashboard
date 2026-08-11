@@ -3,10 +3,12 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from src.brain import models as brain_models  # noqa: F401  register M1 models
 from src.core.settings import get_settings
 from src.db import models  # noqa: F401  ensures models register on Base.metadata
 from src.db.base import Base
 from src.db.session import to_sync_url
+from src.research import models as research_models  # noqa: F401  register M2 models
 
 config = context.config
 if config.config_file_name is not None:
