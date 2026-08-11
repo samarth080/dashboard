@@ -5,8 +5,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Run
-from src.llm.logging import log_llm_call
 from src.llm.mock import MockLLM
+from src.llm.persistence import log_llm_call
 
 
 class _StructuredSchema(BaseModel):
