@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from alembic import command
 from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from alembic import command
 from src.core.settings import get_settings
 from src.db.session import get_engine, get_sessionmaker, to_sync_url
 

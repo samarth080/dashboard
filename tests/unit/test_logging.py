@@ -28,8 +28,13 @@ def test_json_formatter_includes_run_id_and_message():
 
 def test_json_formatter_run_id_is_none_by_default():
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname=__file__, lineno=1,
-        msg="no run", args=(), exc_info=None,
+        name="test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="no run",
+        args=(),
+        exc_info=None,
     )
     payload = json.loads(JSONFormatter().format(record))
     assert payload["run_id"] is None
@@ -39,8 +44,13 @@ def test_json_formatter_includes_a_parseable_timestamp():
     """FIX 4: no timestamp field at all means events can't be ordered or correlated."""
     before = datetime.now(UTC)
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname=__file__, lineno=1,
-        msg="hello", args=(), exc_info=None,
+        name="test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="hello",
+        args=(),
+        exc_info=None,
     )
     after = datetime.now(UTC)
 
@@ -72,7 +82,13 @@ def test_json_formatter_merges_extra_fields():
     """FIX 4: extra={...} was dropped, defeating the point of JSON logging."""
     logger = logging.getLogger("test_extra_logger")
     record = logger.makeRecord(
-        logger.name, logging.INFO, __file__, 1, "job finished", (), None,
+        logger.name,
+        logging.INFO,
+        __file__,
+        1,
+        "job finished",
+        (),
+        None,
         extra={"job_id": 7},
     )
     payload = json.loads(JSONFormatter().format(record))

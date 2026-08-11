@@ -282,8 +282,13 @@ def test_json_formatter_includes_run_id_and_message():
 def test_json_formatter_run_id_is_none_by_default():
     run_id_var.set(None)
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname=__file__, lineno=1,
-        msg="no run", args=(), exc_info=None,
+        name="test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="no run",
+        args=(),
+        exc_info=None,
     )
     payload = json.loads(JSONFormatter().format(record))
     assert payload["run_id"] is None
@@ -586,6 +591,7 @@ Revises:
 Create Date: 2026-08-11
 
 """
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
@@ -1025,8 +1031,14 @@ from services.worker.tasks import ping
 def celery_worker_process():
     proc = subprocess.Popen(
         [
-            "uv", "run", "celery", "-A", "services.worker.celery_app", "worker",
-            "--loglevel=info", "--pool=solo",
+            "uv",
+            "run",
+            "celery",
+            "-A",
+            "services.worker.celery_app",
+            "worker",
+            "--loglevel=info",
+            "--pool=solo",
         ]
     )
     for _ in range(30):

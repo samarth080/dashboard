@@ -40,6 +40,14 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.isort]
+# The repo has a top-level `alembic/` migrations directory, which makes ruff
+# infer that the `alembic` PyPI package is first-party. It is not, and the
+# resulting misclassification makes `ruff check --fix` and `ruff format`
+# disagree about import order. State both sides explicitly.
+known-first-party = ["src", "services", "tests"]
+known-third-party = ["alembic"]
+
 [tool.pyright]
 include = ["src", "services", "tests"]
 pythonVersion = "3.12"

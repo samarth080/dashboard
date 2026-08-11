@@ -11,8 +11,14 @@ from services.worker.tasks import ping
 def celery_worker_process():
     proc = subprocess.Popen(
         [
-            "uv", "run", "celery", "-A", "services.worker.celery_app", "worker",
-            "--loglevel=info", "--pool=solo",
+            "uv",
+            "run",
+            "celery",
+            "-A",
+            "services.worker.celery_app",
+            "worker",
+            "--loglevel=info",
+            "--pool=solo",
         ]
     )
     for _ in range(30):
