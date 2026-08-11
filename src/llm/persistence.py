@@ -1,3 +1,5 @@
+"""Persists LLM call usage metadata to the `llm_calls` table."""
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import LLMCall, Run
@@ -7,6 +9,18 @@ from src.llm.protocol import LLMResult, StructuredResult
 async def log_llm_call(
     session: AsyncSession, run: Run, result: LLMResult | StructuredResult
 ) -> LLMCall:
+    """Record one LLM call's usage metadata against `run`.
+
+    Accepts either a `generate()` result (LLMResult) or a `structured()`
+    result (StructuredResult, whose `.usage` carries the same metadata) so
+    both call kinds are logged through one path — structured calls spend
+    tokens too and must be cost-tracked identically.
+
+    Flushes to obtain the primary key (`id` and the server-generated
+    `created_at` are populated by the flush; no `refresh()` is needed to see
+    them). Does not commit — the caller owns the transaction and is
+    responsible for committing it.
+    """
     usage = result.usage if isinstance(result, StructuredResult) else result
     call = LLMCall(
         run_id=run.id,
@@ -19,5 +33,4 @@ async def log_llm_call(
     )
     session.add(call)
     await session.flush()
-    await session.refresh(call)
     return call
