@@ -229,6 +229,12 @@ Migration `0005_content_memory` adds:
   The embedding columns are nullable at the schema level, matching M2 and
   keeping a provider outage from blocking a write, but the service always
   embeds on write. A row without a vector is scored lexically only.
+
+  Unlike M2's document API, the request schema does not accept a caller-supplied
+  vector. An arbitrary embedding stored under a real model's name would match
+  the same-model candidate filter and then raise on the dimension mismatch,
+  turning every later duplicate check and approval into a 500. Nothing needs to
+  supply one, so the field does not exist.
 - **`post_metric_snapshots`** — indexed `post_record_id`, `captured_at`,
   `source`, `is_mock`, and nullable `impressions`, `reactions`, `comments`,
   `reposts`, `clicks`, `follows`.
@@ -298,7 +304,8 @@ Unit:
 - verdict banding against configured thresholds
 - `MockEmbedder` determinism, normalization, and dimension
 - `MockAnalyticsProvider` determinism and metric bounds
-- paired `embedding`/`embedding_model` validation
+- the create schema rejects a caller-supplied embedding outright
+- an explicitly null field clears it, distinct from omitting the field
 - override requires a non-empty reason
 
 Integration:

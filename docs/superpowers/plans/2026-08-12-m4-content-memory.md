@@ -1425,7 +1425,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.llm.embeddings import MockEmbedder
 from src.memory import service
-from src.memory.schemas import DuplicateConfigCreate, PostRecordCreate
+from src.memory.schemas import DuplicateConfigCreate, PostRecordCreate, PostRecordUpdate
 from src.memory.service import ContentMemoryConflict, ContentMemoryNotFound
 
 
@@ -1452,21 +1452,32 @@ async def test_create_manual_post_embeds_and_hashes(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_supplied_embedding_is_kept_instead_of_recomputed(db_session: AsyncSession):
+async def test_manual_post_is_always_recorded_as_published_externally(db_session: AsyncSession):
+    record = await service.create_post_record(
+        db_session,
+        PostRecordCreate(platform="x", content="Something I posted last week."),
+        embedder=MockEmbedder(),
+        run_id=uuid.uuid4(),
+    )
+    assert record.status == "published_externally"
+    assert record.embedding is not None
+    assert len(record.embedding) == MockEmbedder.dimensions
+
+
+@pytest.mark.asyncio
+async def test_external_url_can_be_cleared(db_session: AsyncSession):
     record = await service.create_post_record(
         db_session,
         PostRecordCreate(
-            platform="x",
-            content="Caller supplied a vector.",
-            embedding=[0.5, 0.5],
-            embedding_model="caller-model",
+            platform="x", content="Backfilled with a typo'd link.", external_url="https://typo"
         ),
         embedder=MockEmbedder(),
         run_id=uuid.uuid4(),
     )
-    assert record.embedding_model == "caller-model"
-    assert record.embedding is not None
-    assert len(record.embedding) == 2
+    updated = await service.update_post_record(
+        db_session, record.id, PostRecordUpdate(external_url=None)
+    )
+    assert updated.external_url is None
 
 
 @pytest.mark.asyncio
@@ -1760,15 +1771,20 @@ async def create_post_record(
     embedder: EmbeddingProvider,
     run_id: uuid.UUID | None,
 ) -> PostRecord:
-    """Record a post the user already published elsewhere."""
-    if data.embedding is not None and data.embedding_model is not None:
-        embedding, embedding_model = data.embedding, data.embedding_model
-    else:
-        embedding, embedding_model = await _embed(session, embedder, data.content, run_id)
+    """Record a post the user already published elsewhere.
+
+    The service always embeds. Callers cannot supply a vector: an arbitrary
+    client-supplied embedding would be stored under a real model's name, match
+    the same-model filter during candidate selection, and then raise on the
+    dimension mismatch — turning every later duplicate check and approval into
+    a 500.
+    """
+    embedding, embedding_model = await _embed(session, embedder, data.content, run_id)
     record = PostRecord(
         platform=data.platform,
         origin="manual",
-        status=data.status,
+        # A manual backfill is by definition already published elsewhere.
+        status="published_externally",
         workflow_id=None,
         content=data.content,
         normalized_content=normalize_content(data.content),
@@ -1835,11 +1851,14 @@ async def update_post_record(
     session: AsyncSession, post_id: uuid.UUID, data: PostRecordUpdate
 ) -> PostRecord:
     record = await require_post_record(session, post_id)
-    if data.status is not None:
+    # Key off what the caller actually sent, not off None, so an explicit null
+    # clears a field instead of being indistinguishable from omitting it.
+    provided = data.model_fields_set
+    if "status" in provided and data.status is not None:
         record.status = data.status
-    if data.posted_at is not None:
+    if "posted_at" in provided:
         record.posted_at = data.posted_at
-    if data.external_url is not None:
+    if "external_url" in provided:
         record.external_url = data.external_url
     await session.flush()
     return record
@@ -1969,6 +1988,9 @@ async def capture_metrics(
         platform=record.platform,
         posted_at=record.posted_at,
         now=datetime.now(UTC),
+        # A real provider needs the platform-side identifier to fetch anything;
+        # our own primary key is meaningless to LinkedIn or X.
+        external_ref=record.external_url,
     )
     snapshot = PostMetricSnapshot(
         post_record_id=record.id,
