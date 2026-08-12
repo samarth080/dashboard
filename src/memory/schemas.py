@@ -131,10 +131,18 @@ class DuplicateCheckRead(ORMResponse):
 
 
 class DuplicatePreviewRequest(BaseModel):
-    """Ad-hoc check of arbitrary text, before a workflow exists."""
+    """Ad-hoc check of arbitrary text, before a workflow exists.
+
+    `workflow_id` is optional because the endpoint is genuinely usable for
+    text that belongs to no workflow. When it is supplied the preview excludes
+    that workflow's own post records, exactly as the approval gate does — the
+    two must score the same corpus, or the panel shows BLOCK against the
+    workflow's own recorded post while the server would answer `clear`.
+    """
 
     platform: PostPlatform
     content: str = Field(min_length=1, max_length=100_000)
+    workflow_id: uuid.UUID | None = None
 
 
 class DuplicatePreviewResponse(BaseModel):

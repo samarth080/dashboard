@@ -314,6 +314,15 @@ export default function ContentPage() {
     event.preventDefault();
     if (!selected || !editForm.stage) return;
     const claim = supportedClaims.find((item) => item.id === editForm.claim_id);
+    // A cached preview describes the text that was checked. Editing a platform
+    // adaptation replaces that text, so the stale verdict — and any override
+    // reason typed against it — must not survive the edit.
+    const editedPlatform =
+      editForm.stage === "linkedin_adaptation"
+        ? "linkedin"
+        : editForm.stage === "x_adaptation"
+          ? "x"
+          : null;
     void runAction(async () => {
       const updated = await request<Workflow>(
         `/api/content/workflows/${selected.id}/artifacts/${editForm.stage}`,
@@ -327,6 +336,10 @@ export default function ContentPage() {
         },
       );
       replaceWorkflow(updated);
+      if (editedPlatform) {
+        setDuplicatePreviews((current) => ({ ...current, [editedPlatform]: null }));
+        setOverrideReasons((current) => ({ ...current, [editedPlatform]: "" }));
+      }
       setEditForm({ stage: "", content: "", claim_id: "", note: "" });
       return "Manual revision appended; the earlier revision remains in history.";
     }, "Revision saved.");
@@ -340,7 +353,11 @@ export default function ContentPage() {
     if (!adaptation) return;
     const preview = await request<DuplicatePreview>("/api/memory/duplicate-check", {
       method: "POST",
-      body: JSON.stringify({ platform, content: adaptation.content }),
+      // Send the workflow so the preview excludes this workflow's own post
+      // record, exactly as the approval gate does. Without it the panel scores
+      // 1.0 against the row a previous approval wrote and shows BLOCK, while
+      // the server would return `clear`.
+      body: JSON.stringify({ platform, content: adaptation.content, workflow_id: selected.id }),
     });
     setDuplicatePreviews((current) => ({ ...current, [platform]: preview }));
   }

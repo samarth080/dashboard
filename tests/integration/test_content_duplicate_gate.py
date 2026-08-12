@@ -328,6 +328,35 @@ async def test_a_published_record_survives_withdrawal_with_its_snapshots(
 
 
 @pytest.mark.asyncio
+async def test_preview_and_gate_agree_for_a_workflows_own_record(
+    content_client: AsyncClient,
+) -> None:
+    """The panel must score the corpus the gate scores, own record excluded."""
+    workflow_id, text = await approve_workflow(content_client, uuid.uuid4().hex)
+    approved = await content_client.post(
+        f"/api/content/workflows/{workflow_id}/approval",
+        json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+    )
+    assert approved.status_code == 200, approved.text
+
+    scoped = await content_client.post(
+        "/api/memory/duplicate-check",
+        json={"platform": "linkedin", "content": text, "workflow_id": workflow_id},
+    )
+    assert scoped.status_code == 200, scoped.text
+    assert scoped.json()["verdict"] == "clear"
+
+    # Without a workflow the endpoint is still an honest ad-hoc check, and the
+    # workflow's own row is part of the corpus it reports on.
+    ad_hoc = await content_client.post(
+        "/api/memory/duplicate-check",
+        json={"platform": "linkedin", "content": text},
+    )
+    assert ad_hoc.status_code == 200, ad_hoc.text
+    assert ad_hoc.json()["verdict"] == "block"
+
+
+@pytest.mark.asyncio
 async def test_override_without_a_reason_is_rejected(content_client: AsyncClient) -> None:
     workflow_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
     response = await content_client.post(

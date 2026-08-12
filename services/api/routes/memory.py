@@ -137,7 +137,9 @@ async def post_duplicate_check(
         platform=payload.platform,
         config=config,
         embedder=embedder,
-        exclude_workflow_id=None,
+        # Match what `decide_approval` will do, or the preview and the gate
+        # disagree for any workflow that already has a record of its own.
+        exclude_workflow_id=payload.workflow_id,
         run_id=uuid.UUID(request.state.run_id),
     )
     # A preview writes no verdict, but the embedding call it made is real
