@@ -11,6 +11,7 @@ from services.api.routes.research import router as research_router
 from src.brain.service import BrainError
 from src.content.service import ContentError
 from src.core.logging import configure_logging, run_context
+from src.llm.embeddings import MockEmbedder
 from src.llm.mock import MockLLM
 from src.research.service import ResearchError
 
@@ -18,6 +19,7 @@ configure_logging()
 
 app = FastAPI(title="Personal Career Engine API")
 app.state.llm_client = MockLLM()
+app.state.embedder = MockEmbedder()
 
 app.add_middleware(
     CORSMiddleware,

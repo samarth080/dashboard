@@ -58,7 +58,10 @@ class DuplicateEvaluation:
         neighbours: list[DuplicateNeighbour],
         config_version: str,
     ) -> None:
-        self.verdict = verdict
+        # Annotated, not inferred: an inferred attribute type widens the
+        # literal verdict to `str`, which then fails to satisfy the Literal
+        # the API response schema declares.
+        self.verdict: DuplicateVerdict = verdict
         self.top_similarity = top_similarity
         self.nearest_post_record_id = nearest_post_record_id
         self.neighbours = neighbours

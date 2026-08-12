@@ -29,8 +29,10 @@ from src.content.schemas import (
     ManualArtifactPut,
 )
 from src.db.models import LLMCall, Run, utcnow
+from src.llm.embeddings import EmbeddingProvider
 from src.llm.persistence import log_llm_call
 from src.llm.protocol import LLMClient
+from src.memory import service as memory_service
 from src.research.models import Claim, EvidencePack, TopicCandidate
 
 
@@ -48,6 +50,16 @@ class ContentConflict(ContentError):
 
 class ContentValidationError(ContentError):
     status_code = 422
+
+
+class DuplicateBlocked(ContentConflict):
+    """Approval refused because the draft repeats existing post history.
+
+    A distinct subclass rather than a bare ContentConflict so the route can
+    commit the duplicate check that was just recorded before the 409 unwinds
+    the request. A refused approval is precisely the thing that must stay
+    inspectable; discarding it would leave no trace of the refusal.
+    """
 
 
 def _workflow_options():
@@ -725,6 +737,7 @@ async def decide_approval(
     workflow_id: uuid.UUID,
     data: ApprovalDecisionInput,
     run_id: uuid.UUID,
+    embedder: EmbeddingProvider,
 ) -> ContentWorkflow:
     workflow = await require_workflow(session, workflow_id)
     if workflow.status not in {"ready_for_approval", "approved", "rejected"}:
@@ -745,6 +758,40 @@ async def decide_approval(
     if not findings or any(finding["status"] != "supported" for finding in findings):
         raise ContentConflict("latest platform adaptation has not passed grounding checks")
     run = await _ensure_run(session, run_id)
+    # M4 duplicate gate. Runs only for approvals: a rejection needs no
+    # duplicate opinion, and must not write history.
+    if data.decision == "approved":
+        config = await memory_service.get_active_duplicate_config(session)
+        evaluation = await memory_service.evaluate_duplicate(
+            session,
+            text=latest_adaptation.content,
+            platform=data.platform,
+            config=config,
+            embedder=embedder,
+            # Or a re-approval would find the post this workflow itself
+            # recorded last time and block on it.
+            exclude_workflow_id=workflow.id,
+            run_id=run.id,
+        )
+        # An override only means anything against a block: recording one for a
+        # verdict that was never going to stop the approval would overstate
+        # what the human actually decided.
+        overridden = evaluation.verdict == "block" and data.duplicate_override
+        await memory_service.persist_duplicate_check(
+            session,
+            workflow_id=workflow.id,
+            platform=data.platform,
+            evaluation=evaluation,
+            overridden=overridden,
+            override_reason=data.override_reason if overridden else None,
+            run_id=run.id,
+        )
+        if evaluation.verdict == "block" and not overridden:
+            raise DuplicateBlocked(
+                "this draft is a near-duplicate of an existing post "
+                f"(similarity {evaluation.top_similarity:.2f}); "
+                "approve again with duplicate_override and a reason to proceed"
+            )
     decision = AutomationPolicy().evaluate(
         PublicAction(platform=data.platform),
         required_level=approval.required_level,
@@ -768,5 +815,17 @@ async def decide_approval(
         workflow.status = "approved"
     else:
         workflow.status = "ready_for_approval"
+    if data.decision == "approved":
+        # Post history is per platform, so it follows the platform approval,
+        # not the workflow status: the other platform may still be pending.
+        # Idempotent across re-approval by (workflow_id, platform).
+        await memory_service.record_workflow_post(
+            session,
+            workflow_id=workflow.id,
+            platform=data.platform,
+            content=latest_adaptation.content,
+            embedder=embedder,
+            run_id=run.id,
+        )
     await session.flush()
     return workflow

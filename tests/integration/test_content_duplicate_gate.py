@@ -1,0 +1,200 @@
+import uuid
+from collections.abc import AsyncIterator
+
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from services.api.main import app
+from src.db.session import get_session
+from src.llm.mock import MockLLM
+from src.memory.models import DuplicateCheck, PostRecord
+from tests.integration.test_content_api import create_grounded_topic
+
+
+@pytest_asyncio.fixture
+async def content_client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """A client for the whole app, matching the per-module style of the suite.
+
+    Defined here rather than imported from the M3 suite: importing a fixture
+    makes every test parameter that uses it a redefinition of the imported
+    name.
+    """
+
+    async def override_session() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    app.dependency_overrides[get_session] = override_session
+    original_llm = app.state.llm_client
+    app.state.llm_client = MockLLM()
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+    finally:
+        app.state.llm_client = original_llm
+        app.dependency_overrides.pop(get_session, None)
+
+
+async def approve_workflow(client: AsyncClient, suffix: str) -> tuple[str, str]:
+    """Drive a workflow to ready_for_approval and return (workflow_id, linkedin text).
+
+    `create_grounded_topic` returns (topic_id, claim_id) — the workflow endpoint
+    resolves the evidence pack from the topic itself, so no pack id is sent.
+    """
+    topic_id, _claim_id = await create_grounded_topic(client, suffix)
+    created = await client.post(
+        "/api/content/workflows",
+        json={
+            "topic_id": topic_id,
+            "angle_type": "framework",
+            "platforms": ["linkedin"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    workflow_id = created.json()["id"]
+    run = await client.post(f"/api/content/workflows/{workflow_id}/run")
+    assert run.status_code == 200, run.text
+    workflow = run.json()
+    assert workflow["status"] == "ready_for_approval", workflow["status"]
+    adaptation = max(
+        (a for a in workflow["artifacts"] if a["stage"] == "linkedin_adaptation"),
+        key=lambda a: a["revision"],
+    )
+    return workflow_id, adaptation["content"]
+
+
+async def post_records_for(session: AsyncSession, workflow_id: str) -> list[PostRecord]:
+    result = await session.execute(
+        select(PostRecord).where(PostRecord.workflow_id == uuid.UUID(workflow_id))
+    )
+    return list(result.scalars().all())
+
+
+async def duplicate_checks_for(session: AsyncSession, workflow_id: str) -> list[DuplicateCheck]:
+    result = await session.execute(
+        select(DuplicateCheck)
+        .where(DuplicateCheck.workflow_id == uuid.UUID(workflow_id))
+        .order_by(DuplicateCheck.created_at)
+    )
+    return list(result.scalars().all())
+
+
+@pytest.mark.asyncio
+async def test_approval_records_a_post_and_a_clear_check(
+    content_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    workflow_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
+    response = await content_client.post(
+        f"/api/content/workflows/{workflow_id}/approval",
+        json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+    )
+    assert response.status_code == 200, response.text
+
+    records = await post_records_for(db_session, workflow_id)
+    assert len(records) == 1
+    assert records[0].origin == "workflow"
+    assert records[0].status == "approved_unpublished"
+    assert records[0].platform == "linkedin"
+
+    checks = await duplicate_checks_for(db_session, workflow_id)
+    assert len(checks) == 1
+    assert checks[0].verdict == "clear"
+    assert checks[0].overridden is False
+
+
+@pytest.mark.asyncio
+async def test_reapproval_does_not_duplicate_the_post_record(
+    content_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    workflow_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
+    for _ in range(2):
+        response = await content_client.post(
+            f"/api/content/workflows/{workflow_id}/approval",
+            json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+        )
+        assert response.status_code == 200, response.text
+    assert len(await post_records_for(db_session, workflow_id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_near_duplicate_is_blocked_then_allowed_with_an_override(
+    content_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    first_id, text = await approve_workflow(content_client, uuid.uuid4().hex)
+    approved = await content_client.post(
+        f"/api/content/workflows/{first_id}/approval",
+        json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+    )
+    assert approved.status_code == 200, approved.text
+
+    # Record the same text again so the second workflow has a true duplicate to
+    # find that does not belong to its own workflow.
+    manual = await content_client.post(
+        "/api/memory/posts", json={"platform": "linkedin", "content": text}
+    )
+    assert manual.status_code == 201, manual.text
+
+    second_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
+    blocked = await content_client.post(
+        f"/api/content/workflows/{second_id}/approval",
+        json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+    )
+    assert blocked.status_code == 409
+    assert "duplicate" in blocked.json()["detail"].lower()
+
+    # A blocked attempt is exactly the thing that must stay inspectable.
+    blocked_checks = await duplicate_checks_for(db_session, second_id)
+    assert [check.verdict for check in blocked_checks] == ["block"]
+    assert blocked_checks[0].overridden is False
+    assert await post_records_for(db_session, second_id) == []
+
+    overridden = await content_client.post(
+        f"/api/content/workflows/{second_id}/approval",
+        json={
+            "platform": "linkedin",
+            "decision": "approved",
+            "actor": "user",
+            "duplicate_override": True,
+            "override_reason": "Intentional follow-up in a series.",
+        },
+    )
+    assert overridden.status_code == 200, overridden.text
+
+    checks = await duplicate_checks_for(db_session, second_id)
+    assert len(checks) == 2
+    assert checks[-1].overridden is True
+    assert checks[-1].override_reason == "Intentional follow-up in a series."
+    assert len(await post_records_for(db_session, second_id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_override_without_a_reason_is_rejected(content_client: AsyncClient) -> None:
+    workflow_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
+    response = await content_client.post(
+        f"/api/content/workflows/{workflow_id}/approval",
+        json={
+            "platform": "linkedin",
+            "decision": "approved",
+            "actor": "user",
+            "duplicate_override": True,
+        },
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_rejection_does_not_record_a_post(
+    content_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    workflow_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
+    response = await content_client.post(
+        f"/api/content/workflows/{workflow_id}/approval",
+        json={"platform": "linkedin", "decision": "rejected", "actor": "user"},
+    )
+    assert response.status_code == 200, response.text
+    assert await post_records_for(db_session, workflow_id) == []
+    # A rejection needs no duplicate opinion either.
+    assert await duplicate_checks_for(db_session, workflow_id) == []

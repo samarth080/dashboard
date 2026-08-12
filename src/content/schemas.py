@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 AngleType = Literal[
     "technical",
@@ -89,6 +89,17 @@ class ApprovalDecisionInput(BaseModel):
     decision: Literal["approved", "rejected"]
     actor: str = Field(default="user", min_length=1, max_length=160)
     reason: str | None = Field(default=None, max_length=10_000)
+    duplicate_override: bool = False
+    override_reason: str | None = Field(default=None, max_length=10_000)
+
+    @model_validator(mode="after")
+    def override_requires_a_reason(self) -> "ApprovalDecisionInput":
+        # Enforced here as well as by ck_duplicate_checks_override_reason: an
+        # override that reached the database without a reason would surface as
+        # a 500 IntegrityError rather than a 422 the caller can act on.
+        if self.duplicate_override and not (self.override_reason or "").strip():
+            raise ValueError("override_reason is required when duplicate_override is set")
+        return self
 
 
 class ContentClaimReferenceRead(ORMResponse):

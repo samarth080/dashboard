@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.api.dependencies import get_llm_client
+from services.api.dependencies import get_embedder, get_llm_client
 from src.content import service
 from src.content.models import ContentWorkflow
 from src.content.schemas import (
@@ -16,6 +16,7 @@ from src.content.schemas import (
     ManualArtifactPut,
 )
 from src.db.session import get_session
+from src.llm.embeddings import EmbeddingProvider
 from src.llm.protocol import LLMClient
 
 router = APIRouter(prefix="/content", tags=["content"])
@@ -92,12 +93,21 @@ async def post_approval(
     payload: ApprovalDecisionInput,
     request: Request,
     session: AsyncSession = Depends(get_session),  # noqa: B008
+    embedder: EmbeddingProvider = Depends(get_embedder),  # noqa: B008
 ) -> ContentWorkflow:
-    workflow = await service.decide_approval(
-        session,
-        workflow_id=workflow_id,
-        data=payload,
-        run_id=uuid.UUID(request.state.run_id),
-    )
+    try:
+        workflow = await service.decide_approval(
+            session,
+            workflow_id=workflow_id,
+            data=payload,
+            run_id=uuid.UUID(request.state.run_id),
+            embedder=embedder,
+        )
+    except service.DuplicateBlocked:
+        # Commit the recorded duplicate check before the 409 unwinds the
+        # request; nothing else was mutated, and a refusal with no stored
+        # evidence of why is not inspectable.
+        await session.commit()
+        raise
     await session.commit()
     return workflow
