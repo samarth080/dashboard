@@ -24,6 +24,10 @@ async def test_runs_and_llm_calls_tables_exist(db_session: AsyncSession):
     assert "content_artifacts" in tables
     assert "content_claim_references" in tables
     assert "content_approvals" in tables
+    assert "post_records" in tables
+    assert "post_metric_snapshots" in tables
+    assert "duplicate_configs" in tables
+    assert "duplicate_checks" in tables
 
 
 @pytest.mark.asyncio
