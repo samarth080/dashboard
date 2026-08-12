@@ -7,12 +7,14 @@ from fastapi.responses import JSONResponse
 from services.api.routes.brain import router as brain_router
 from services.api.routes.content import router as content_router
 from services.api.routes.health import router as health_router
+from services.api.routes.memory import router as memory_router
 from services.api.routes.research import router as research_router
 from src.brain.service import BrainError
 from src.content.service import ContentError
 from src.core.logging import configure_logging, run_context
 from src.llm.embeddings import MockEmbedder
 from src.llm.mock import MockLLM
+from src.memory.service import ContentMemoryError
 from src.research.service import ResearchError
 
 configure_logging()
@@ -66,7 +68,16 @@ async def content_error_handler(request: Request, exc: ContentError) -> JSONResp
     )
 
 
+@app.exception_handler(ContentMemoryError)
+async def memory_error_handler(request: Request, exc: ContentMemoryError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": str(exc), "run_id": request.state.run_id},
+    )
+
+
 app.include_router(health_router, prefix="/api")
 app.include_router(brain_router, prefix="/api")
 app.include_router(research_router, prefix="/api")
 app.include_router(content_router, prefix="/api")
+app.include_router(memory_router, prefix="/api")
