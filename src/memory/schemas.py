@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 PostPlatform = Literal["linkedin", "x"]
 PostOrigin = Literal["workflow", "manual"]
@@ -18,31 +18,36 @@ class ORMResponse(BaseModel):
 
 
 class PostRecordCreate(BaseModel):
-    """Manual backfill of a post already published elsewhere."""
+    """Manual backfill of a post already published elsewhere.
+
+    No `embedding`/`embedding_model` fields: the service embeds every post it
+    writes and tags it with the producing model, so there is no caller that
+    needs to supply a vector. Accepting a client-supplied one would let a
+    mismatched dimension slip past this schema, then blow up every later
+    `cosine_similarity` call against it. No `status` field either — a manual
+    backfill is by definition already published elsewhere, so the service
+    hard-codes `published_externally`; `PostRecordUpdate` is how a record
+    gets re-classified later.
+    """
 
     platform: PostPlatform
     content: str = Field(min_length=1, max_length=100_000)
-    status: PostStatus = "published_externally"
-    posted_at: datetime | None = None
+    posted_at: AwareDatetime | None = None
     external_url: str | None = Field(default=None, max_length=2048)
-    embedding: list[float] | None = Field(default=None, max_length=16_000)
-    embedding_model: str | None = Field(default=None, max_length=160)
-
-    @model_validator(mode="after")
-    def embedding_has_model(self) -> "PostRecordCreate":
-        if (self.embedding is None) != (self.embedding_model is None):
-            raise ValueError("embedding and embedding_model must be provided together")
-        return self
 
 
 class PostRecordUpdate(BaseModel):
     status: PostStatus | None = None
-    posted_at: datetime | None = None
+    posted_at: AwareDatetime | None = None
     external_url: str | None = Field(default=None, max_length=2048)
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> "PostRecordUpdate":
-        if self.status is None and self.posted_at is None and self.external_url is None:
+        # `model_fields_set` (not "is every field None") so an explicit
+        # `{"external_url": null}` counts as a provided field: otherwise None
+        # would mean both "omitted" and "clear this value", and a caller who
+        # backfilled a typo'd URL could never remove it.
+        if not self.model_fields_set:
             raise ValueError("provide at least one field to update")
         return self
 
@@ -62,9 +67,9 @@ class PostMetricSnapshotRead(ORMResponse):
 
 class PostRecordRead(ORMResponse):
     id: uuid.UUID
-    platform: str
-    origin: str
-    status: str
+    platform: PostPlatform
+    origin: PostOrigin
+    status: PostStatus
     workflow_id: uuid.UUID | None
     content: str
     content_hash: str
@@ -113,14 +118,15 @@ class DuplicateNeighbour(BaseModel):
 class DuplicateCheckRead(ORMResponse):
     id: uuid.UUID
     workflow_id: uuid.UUID
-    platform: str
+    platform: PostPlatform
     config_version: str
-    verdict: str
+    verdict: Verdict
     top_similarity: Decimal
     nearest_post_record_id: uuid.UUID | None
-    components: list[dict[str, object]]
+    components: list[DuplicateNeighbour]
     overridden: bool
     override_reason: str | None
+    run_id: uuid.UUID | None
     created_at: datetime
 
 

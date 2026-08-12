@@ -3,7 +3,36 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from src.memory.analytics import MockAnalyticsProvider
+from src.memory.analytics import MockAnalyticsProvider, PostMetrics
+
+
+def test_mock_provider_identity_is_honest():
+    """`is_mock` gates a database constraint (`ck_post_metric_snapshots_is_mock`).
+
+    Nothing else in the suite would catch `name` or `is_mock` drifting: the
+    other tests only look at the numbers `fetch` returns. Renaming `name`
+    away from "mock" would leave the rest of this file green while every
+    metric capture failed at runtime against that constraint.
+    """
+    provider = MockAnalyticsProvider()
+    assert provider.name == "mock"
+    assert provider.is_mock is True
+
+
+def test_post_metrics_defaults_to_all_none():
+    """The null-not-zero rule, unit-tested at its source.
+
+    A bare `PostMetrics()` is what a real provider returns for "nothing to
+    report". If any field defaulted to 0, that would be indistinguishable
+    from a genuine zero count.
+    """
+    metrics = PostMetrics()
+    assert metrics.impressions is None
+    assert metrics.reactions is None
+    assert metrics.comments is None
+    assert metrics.reposts is None
+    assert metrics.clicks is None
+    assert metrics.follows is None
 
 
 @pytest.mark.asyncio
@@ -24,13 +53,17 @@ async def test_different_posts_get_different_metrics():
     posted_at = datetime(2026, 8, 1, tzinfo=UTC)
     now = datetime(2026, 8, 6, tzinfo=UTC)
     provider = MockAnalyticsProvider()
-    first = await provider.fetch(
-        post_id=uuid.uuid4(), platform="linkedin", posted_at=posted_at, now=now
-    )
-    second = await provider.fetch(
-        post_id=uuid.uuid4(), platform="linkedin", posted_at=posted_at, now=now
-    )
-    assert first.impressions != second.impressions
+    # Fixed, deterministic ids rather than two random draws: impressions are
+    # seeded from a ~800-value space, so a pair of random uuids collides
+    # about 1 run in 800. A batch of distinct ids makes this assertion
+    # flake-free instead of merely unlikely to flake.
+    post_ids = [uuid.UUID(int=n) for n in range(10)]
+    results = [
+        await provider.fetch(post_id=post_id, platform="linkedin", posted_at=posted_at, now=now)
+        for post_id in post_ids
+    ]
+    impressions = {result.impressions for result in results}
+    assert len(impressions) > 1
 
 
 @pytest.mark.asyncio

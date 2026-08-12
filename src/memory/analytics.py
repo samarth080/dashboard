@@ -31,8 +31,20 @@ class PostMetrics(BaseModel):
 class AnalyticsProvider(Protocol):
     """Contract every analytics provider must satisfy.
 
-    Implementations never persist; the caller writes the snapshot. Real
-    platform providers stay behind the M7 capability gate.
+    Responsibilities of an implementation, mirroring `LLMClient`
+    (`src/llm/protocol.py`):
+    - Raise on failure (rate limits, a partial or unreachable platform API)
+      rather than returning a placeholder `PostMetrics`; callers are expected
+      to handle exceptions, not sniff sentinel values.
+    - Treat `None` on a `PostMetrics` field as "the platform does not report
+      this metric" — never as "the call failed". Collapsing those two
+      meanings into one all-`None` result would make a rate-limited call
+      indistinguishable from a genuine no-data response, which is exactly
+      the corruption the null-not-zero rule on `PostMetrics` exists to
+      prevent.
+    - Never persist anything. The caller writes the snapshot.
+
+    Real platform providers stay behind the M7 capability gate.
     """
 
     @property
@@ -48,7 +60,15 @@ class AnalyticsProvider(Protocol):
         platform: str,
         posted_at: datetime | None,
         now: datetime,
-    ) -> PostMetrics: ...
+        external_ref: str | None = None,
+    ) -> PostMetrics:
+        """Fetch one performance sample.
+
+        `external_ref` is the platform-side identifier (caller supplies it
+        from the post record) — a real provider needs it to look the post up
+        on LinkedIn or X, since `post_id` is only meaningful internally.
+        """
+        ...
 
 
 class MockAnalyticsProvider:
@@ -70,7 +90,10 @@ class MockAnalyticsProvider:
         platform: str,
         posted_at: datetime | None,
         now: datetime,
+        external_ref: str | None = None,
     ) -> PostMetrics:
+        # external_ref exists only to satisfy the protocol: the mock never
+        # calls a real platform, so it has nothing to look up and ignores it.
         seed = int.from_bytes(hashlib.sha256(post_id.bytes).digest()[:8], "big")
         age_days = 0.0 if posted_at is None else max(0.0, (now - posted_at).total_seconds() / 86400)
         # Reach saturates rather than growing without bound.

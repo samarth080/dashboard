@@ -9,6 +9,7 @@ method is deliberately broken.
 from src.llm.embeddings import EmbeddingProvider, MockEmbedder
 from src.llm.mock import MockLLM
 from src.llm.protocol import LLMClient
+from src.memory.analytics import AnalyticsProvider, MockAnalyticsProvider
 
 
 def test_mock_llm_satisfies_protocol() -> None:
@@ -25,4 +26,15 @@ def test_mock_embedder_satisfies_protocol() -> None:
     check: pyright fails it if `embed()` or `model` stop matching.
     """
     provider: EmbeddingProvider = MockEmbedder()
+    assert provider is not None
+
+
+def test_mock_analytics_provider_satisfies_protocol() -> None:
+    """Same gap, same fix, for AnalyticsProvider.
+
+    No consumer annotates a parameter as `AnalyticsProvider` yet either, so
+    this assignment is what catches `MockAnalyticsProvider.fetch`, `name`, or
+    `is_mock` drifting from the protocol.
+    """
+    provider: AnalyticsProvider = MockAnalyticsProvider()
     assert provider is not None
