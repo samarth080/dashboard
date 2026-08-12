@@ -195,6 +195,17 @@ immediately after the existing grounding check.
    records `overridden` and the reason either way.
 3. When a platform approval becomes `approved`, create that platform's
    `PostRecord`, embedding its content through the configured provider.
+4. When a platform approval is rejected, delete that platform's
+   workflow-origin `PostRecord` if one exists. `approved_unpublished` is a
+   claim about a live approval, so withdrawing the approval must not leave the
+   claim standing — otherwise a withdrawn draft silently blocks future drafts
+   on its own text. Manual and `published_externally` rows are never touched,
+   and the `DuplicateCheck` audit trail is retained.
+
+A blocked approval commits its `DuplicateCheck` before returning `409`. The
+session is otherwise never committed on an error path, so without that the
+record of *why* an approval was refused would be rolled back — losing exactly
+the row that has to stay inspectable.
 
 The roadmap guardrail — never auto-publish something highly similar — holds:
 auto-publishing does not exist, and any override is an explicit human act
