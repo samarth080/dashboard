@@ -409,7 +409,7 @@ class MockEmbedder:
     and duplicate detection is only as semantic as the provider behind it.
     """
 
-    dimensions = 256
+    dimensions = 1024
     prompt_version = "embedding/mock-embed-v1"
 
     def __init__(self, *, model: str = "mock-embed-v1", latency_ms: int = 1) -> None:
@@ -3163,10 +3163,13 @@ Both sub-scores are persisted so every verdict is explainable.
 the request carries an override with a written reason, which is persisted on the
 check. Approval then records the post. Rejection records nothing.
 
-`MockEmbedder` hashes tokens, so it measures vocabulary overlap and cannot
-detect a paraphrase sharing no words with the original. `MockAnalyticsProvider`
-invents deterministic figures and tags every snapshot `is_mock`. Neither is a
-substitute for a real provider.
+`MockEmbedder` hashes tokens into 1024 buckets, and fails in both directions:
+it cannot detect a paraphrase sharing no words with the original, and bucket
+collisions inflate similarity between unrelated texts as they lengthen. 1024 is
+a floor, not a preference — at 256 buckets, unrelated 400-token documents scored
+0.63, near the seeded 0.70 warn threshold. Thresholds must never be calibrated
+against this embedder. `MockAnalyticsProvider` invents deterministic figures and
+tags every snapshot `is_mock`. Neither is a substitute for a real provider.
 ```
 
 Add the memory HTTP surface after the content one:
@@ -3208,9 +3211,11 @@ Change the M4 status line to complete, set "Next" to M5 — Job Engine, add `/an
 Update: the date, milestone status (M4 complete, next M5), the migration list through `0005`, the API route list, the verification counts from the actual test output in Step 1 (do not copy the numbers from this plan — run the suite and read them), and the known limitations. Add to limitations:
 
 ```markdown
-- `MockEmbedder` hashes tokens, so semantic duplicate detection currently
-  detects vocabulary overlap only. A reworded post sharing no words with the
-  original will not be caught until a real embedding provider is configured.
+- `MockEmbedder` hashes tokens into 1024 buckets, so semantic duplicate
+  detection fails in both directions until a real embedding provider is
+  configured. A reworded post sharing no words with the original will not be
+  caught, and collisions inflate similarity between unrelated long texts.
+  Do not calibrate duplicate thresholds against it.
 - Analytics figures are invented by `MockAnalyticsProvider` and tagged
   `is_mock`. No real platform metrics exist.
 ```

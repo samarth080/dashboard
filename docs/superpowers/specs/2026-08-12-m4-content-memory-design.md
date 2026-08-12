@@ -89,13 +89,26 @@ of zero. No parallel cost table is introduced; `llm_calls` needs no schema
 change.
 
 `MockEmbedder` is deterministic, makes no network call, reports zero cost, and
-returns an L2-normalized 256-dimension hashed bag-of-words vector.
+returns an L2-normalized 1024-dimension hashed bag-of-words vector.
 
-**Its limitation is real and must be documented alongside MockLLM's.** Because
-it hashes tokens, it measures vocabulary overlap. It cannot detect a genuine
-paraphrase that shares no words with the original. It validates the pipeline,
-not the semantics. Meaningful semantic detection requires a real provider,
-which the protocol allows without changing any M4 logic.
+**Its limitations are real and must be documented alongside MockLLM's.** They
+run in both directions. Because it hashes tokens, it measures vocabulary
+overlap and cannot detect a genuine paraphrase that shares no words with the
+original. And because distinct tokens collide into a fixed number of buckets,
+it also reports overlap that does not exist, increasingly so as documents
+lengthen.
+
+The bucket count is what governs that second failure. Measured on text with
+zero shared vocabulary, 256 buckets produced a cosine of 0.63 at 400 distinct
+tokens — a typical post length, and close enough to the seeded 0.70 warn
+threshold to cause false blocks, since scoring combines with `max`. At 1024
+buckets the same pair scores 0.27 while paraphrase detection is unchanged, so
+1024 is the floor, not a preference.
+
+Duplicate thresholds must therefore never be calibrated against this embedder.
+It validates the pipeline, not the semantics. Meaningful semantic detection
+requires a real provider, which the protocol allows without changing any M4
+logic.
 
 Vector columns stay dimension-unconstrained, matching M2. No ANN index is
 possible until a provider fixes the dimension, which is acceptable at
@@ -295,7 +308,7 @@ Integration:
 - a blocked candidate refuses approval, and an override succeeds and persists
 - same-workflow exclusion and `cross_platform_check` in both states
 - snapshots are append-only across repeated capture
-- 256-dimension vector round-trip through pgvector
+- 1024-dimension vector round-trip through pgvector
 
 ## Deferred
 
