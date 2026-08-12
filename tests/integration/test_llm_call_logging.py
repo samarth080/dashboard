@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Run
+from src.llm.embeddings import MockEmbedder
 from src.llm.mock import MockLLM
 from src.llm.persistence import log_llm_call
 
@@ -80,3 +81,31 @@ async def test_structured_llm_call_is_logged(db_session: AsyncSession):
     assert call.model == "mock-llm"
     assert call.prompt_version == "v1"
     assert isinstance(call.cost_usd, Decimal)
+
+
+@pytest.mark.asyncio
+async def test_embedding_call_is_logged(db_session: AsyncSession):
+    """M4 regression test: embed() calls must be cost-loggable too.
+
+    Before this fix, log_llm_call only accepted LLMResult and
+    StructuredResult — EmbeddingResult had no equivalent coverage, so nothing
+    proved an embedding call actually produces a valid llm_calls row.
+    Embedding calls spend tokens exactly like generation calls and must be
+    cost-tracked identically, including that output_tokens is always 0 and
+    cost_usd survives the round trip through the NUMERIC column as Decimal.
+    """
+    run = Run()
+    db_session.add(run)
+    await db_session.flush()
+
+    embedder = MockEmbedder()
+    result = await embedder.embed(["four small tokens here"])
+    call = await log_llm_call(db_session, run, result)
+
+    assert call.id is not None
+    assert call.run_id == run.id
+    assert call.model == "mock-embed-v1"
+    assert call.prompt_version == "embedding/mock-embed-v1"
+    assert call.output_tokens == 0
+    assert isinstance(call.cost_usd, Decimal)
+    assert call.cost_usd == Decimal("0")

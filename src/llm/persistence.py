@@ -25,7 +25,7 @@ async def log_llm_call(
     them). Does not commit — the caller owns the transaction and is
     responsible for committing it.
     """
-    usage = result.usage if isinstance(result, StructuredResult | EmbeddingResult) else result
+    usage = result if isinstance(result, LLMResult) else result.usage
     call = LLMCall(
         run_id=run.id,
         model=usage.model,

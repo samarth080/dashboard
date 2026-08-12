@@ -8,10 +8,18 @@ from src.memory.similarity import cosine_similarity
 
 
 @pytest.mark.asyncio
-async def test_embed_returns_one_vector_per_text():
-    result = await MockEmbedder().embed(["first text", "second text"])
-    assert len(result.vectors) == 2
-    assert all(len(vector) == MockEmbedder.dimensions for vector in result.vectors)
+async def test_embed_returns_one_vector_per_text_in_input_order():
+    batch = await MockEmbedder().embed(["first text", "second text"])
+    assert len(batch.vectors) == 2
+    assert all(len(vector) == MockEmbedder.dimensions for vector in batch.vectors)
+
+    # Ordering is load-bearing: callers zip vectors against their input list
+    # by position. Each vector must match the one produced by embedding that
+    # same text alone, not merely have the right count and width.
+    solo_first = await MockEmbedder().embed(["first text"])
+    solo_second = await MockEmbedder().embed(["second text"])
+    assert batch.vectors[0] == solo_first.vectors[0]
+    assert batch.vectors[1] == solo_second.vectors[0]
 
 
 @pytest.mark.asyncio
