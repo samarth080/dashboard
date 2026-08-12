@@ -18,6 +18,9 @@ from src.content.schemas import (
 from src.db.session import get_session
 from src.llm.embeddings import EmbeddingProvider
 from src.llm.protocol import LLMClient
+from src.memory import service as memory_service
+from src.memory.models import DuplicateCheck
+from src.memory.schemas import DuplicateCheckRead
 
 router = APIRouter(prefix="/content", tags=["content"])
 
@@ -49,6 +52,24 @@ async def get_workflow(
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ContentWorkflow:
     return await service.require_workflow(session, workflow_id)
+
+
+@router.get(
+    "/workflows/{workflow_id}/duplicate-checks",
+    response_model=list[DuplicateCheckRead],
+)
+async def get_duplicate_checks(
+    workflow_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[DuplicateCheck]:
+    """Every duplicate verdict this workflow has received, newest first.
+
+    Lives under /content rather than /memory because a check only exists in
+    the context of a workflow's approval. `require_workflow` runs first so an
+    unknown id is a 404 rather than an empty list that reads like "no checks".
+    """
+    await service.require_workflow(session, workflow_id)
+    return await memory_service.list_duplicate_checks(session, workflow_id=workflow_id)
 
 
 @router.post("/workflows/{workflow_id}/run", response_model=ContentWorkflowRead)

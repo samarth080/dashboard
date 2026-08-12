@@ -91,9 +91,13 @@ commands below to restart them.
 - A duplicate gate at the single M3 seam, `decide_approval`: a `block` verdict
   returns `409` unless the request carries `duplicate_override` and a non-empty
   reason, which is persisted. The blocked check row is committed before the
-  `409` so the refusal stays inspectable. Rejecting a platform approval
-  withdraws the workflow-origin post record that a previous approval created;
-  manual records and the duplicate-check trail are never touched.
+  `409` so the refusal stays inspectable, and readable afterwards at
+  `GET /api/content/workflows/{workflow_id}/duplicate-checks`. Every path that
+  revokes a platform approval — rejection, a re-run, a manual edit of the
+  platform adaptation — withdraws the workflow-origin post record that a
+  previous approval created, so a record exists exactly while the approval
+  does. Manual records, the duplicate-check trail, and rows the user has marked
+  `published_externally` are never touched.
 - `MockAnalyticsProvider` and append-only `post_metric_snapshots`, captured only
   when the user asks. There is no scheduler.
 - Functional `/analytics` UI for post history, manual backfill, and mock metric
@@ -156,18 +160,20 @@ engine between event loops, and compares live schema metadata for drift.
 - `GET|PATCH|DELETE /api/memory/posts/{post_id}`
 - `GET|POST /api/memory/posts/{post_id}/metrics`
 - `GET|POST /api/memory/duplicate-configs`
-- `POST /api/memory/duplicate-check`
+- `POST /api/memory/duplicate-check` (optional `workflow_id` scopes the preview
+  to the same corpus the approval gate will score)
+- `GET /api/content/workflows/{workflow_id}/duplicate-checks`
 
 ## Verification
 
-Counts are from the run made for this handover on 2026-08-12:
+Counts are from the run made for this handover on 2026-08-13:
 
 - `uv run ruff check .` — "All checks passed!"
 - `uv run ruff format --check src services tests` — 93 files already formatted
 - `uv run pyright` — 0 errors, 0 warnings, 0 informations
-- `uv run pytest -q` — 145 passed in 10.92s
+- `uv run pytest -q` — 154 passed in 10.78s
 - Unit tests: 90 passing (`tests/unit`)
-- Integration tests: 55 passing against Postgres and Redis (`tests/integration`)
+- Integration tests: 64 passing against Postgres and Redis (`tests/integration`)
 - `npm --prefix apps/web run build` — compiled successfully, 12 static pages,
   10 app routes
 - `uv run alembic downgrade base && uv run alembic upgrade head` — fresh

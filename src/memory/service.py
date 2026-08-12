@@ -412,6 +412,23 @@ async def persist_duplicate_check(
     return check
 
 
+async def list_duplicate_checks(
+    session: AsyncSession, *, workflow_id: uuid.UUID
+) -> list[DuplicateCheck]:
+    """Every persisted verdict for one workflow, newest first.
+
+    Tie-broken on `id` so the order is at least stable across repeated reads;
+    `created_at` carries microseconds, so a genuine tie means two checks
+    written in the same instant, where no ordering is meaningful anyway.
+    """
+    result = await session.execute(
+        select(DuplicateCheck)
+        .where(DuplicateCheck.workflow_id == workflow_id)
+        .order_by(DuplicateCheck.created_at.desc(), DuplicateCheck.id.desc())
+    )
+    return list(result.scalars().all())
+
+
 async def capture_metrics(
     session: AsyncSession, *, post_id: uuid.UUID, provider: AnalyticsProvider
 ) -> PostMetricSnapshot:

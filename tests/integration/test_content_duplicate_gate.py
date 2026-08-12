@@ -357,6 +357,64 @@ async def test_preview_and_gate_agree_for_a_workflows_own_record(
 
 
 @pytest.mark.asyncio
+async def test_a_blocked_verdict_is_readable_over_http(content_client: AsyncClient) -> None:
+    first_id, text = await approve_workflow(content_client, uuid.uuid4().hex)
+    approved = await content_client.post(
+        f"/api/content/workflows/{first_id}/approval",
+        json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+    )
+    assert approved.status_code == 200, approved.text
+    manual = await content_client.post(
+        "/api/memory/posts", json={"platform": "linkedin", "content": text}
+    )
+    assert manual.status_code == 201, manual.text
+
+    second_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
+    blocked = await content_client.post(
+        f"/api/content/workflows/{second_id}/approval",
+        json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+    )
+    assert blocked.status_code == 409, blocked.text
+
+    listed = await content_client.get(f"/api/content/workflows/{second_id}/duplicate-checks")
+    assert listed.status_code == 200, listed.text
+    assert [check["verdict"] for check in listed.json()] == ["block"]
+    assert listed.json()[0]["overridden"] is False
+    # The stored evidence for the verdict comes back too, not just the verdict.
+    assert listed.json()[0]["top_similarity"] == "1.000"
+    neighbours = {item["post_record_id"] for item in listed.json()[0]["components"]}
+    assert manual.json()["id"] in neighbours
+
+    overridden = await content_client.post(
+        f"/api/content/workflows/{second_id}/approval",
+        json={
+            "platform": "linkedin",
+            "decision": "approved",
+            "actor": "user",
+            "duplicate_override": True,
+            "override_reason": "Deliberate follow-up in a series.",
+        },
+    )
+    assert overridden.status_code == 200, overridden.text
+
+    after = await content_client.get(f"/api/content/workflows/{second_id}/duplicate-checks")
+    assert after.status_code == 200, after.text
+    # Newest first, so the override is the head of the list.
+    assert [check["verdict"] for check in after.json()] == ["block", "block"]
+    assert after.json()[0]["overridden"] is True
+    assert after.json()[0]["override_reason"] == "Deliberate follow-up in a series."
+    assert after.json()[1]["overridden"] is False
+
+
+@pytest.mark.asyncio
+async def test_duplicate_checks_for_an_unknown_workflow_is_404(
+    content_client: AsyncClient,
+) -> None:
+    response = await content_client.get(f"/api/content/workflows/{uuid.uuid4()}/duplicate-checks")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_override_without_a_reason_is_rejected(content_client: AsyncClient) -> None:
     workflow_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
     response = await content_client.post(

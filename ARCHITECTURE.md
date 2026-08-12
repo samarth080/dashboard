@@ -302,11 +302,25 @@ Both sub-scores are persisted so every verdict is explainable.
 reason, which is persisted on the check. The blocked check row is committed
 before the `409` unwinds the request, so a refusal always leaves inspectable
 evidence of why. Approval then records the post as `approved_unpublished` —
-a claim about a live local approval, not about anything being published. A
-rejection records nothing and withdraws the workflow-origin post record that a
-previous approval created, so a withdrawn draft cannot go on blocking future
-drafts with its own text. Manual history and the `duplicate_checks` audit trail
-are never touched by that withdrawal.
+a claim about a live local approval, not about anything being published.
+
+That claim is kept true in both directions: a workflow-origin
+`approved_unpublished` record exists exactly while that platform's approval is
+`approved`. Every path that takes an approval away withdraws the record with it
+— an explicit rejection, a re-run of the workflow, and a manual edit of a
+platform adaptation, the last two through `_revoke_approval` in
+`src/content/service.py`, which resets the decision and withdraws the record as
+one operation. A stale record is not inert: it blocks *other* workflows on
+similar topics, forcing a written override for a duplicate of something never
+approved. Withdrawal is narrow by design — it matches only workflow-origin rows
+still in `approved_unpublished`. Manual history, the `duplicate_checks` audit
+trail, and any row the user has re-classified `published_externally` (which
+would take its append-only metric snapshots with it) all survive untouched.
+
+The `lookback_days` window filters on `COALESCE(posted_at, created_at)`. For a
+manual backfill `created_at` is the day the user typed the post in, which for
+a two-year-old post would keep it inside every window forever; workflow rows
+never set `posted_at`, and there `created_at` is the right date.
 
 `MockEmbedder` hashes tokens into 1024 buckets, and fails in both directions:
 it cannot detect a paraphrase sharing no words with the original, and bucket
@@ -326,6 +340,13 @@ no scheduler. Neither mock is a substitute for a real provider.
 - `GET|POST /api/memory/posts/{post_id}/metrics`
 - `GET|POST /api/memory/duplicate-configs`
 - `POST /api/memory/duplicate-check`
+- `GET /api/content/workflows/{workflow_id}/duplicate-checks`
+
+The preview endpoint takes an optional `workflow_id`; when present it excludes
+that workflow's own post records, exactly as the approval gate does, so the
+preview and the gate score the same corpus. Persisted verdicts are read back
+under `/api/content`, because a check only exists in the context of a
+workflow's approval.
 
 ## LLM abstraction
 
