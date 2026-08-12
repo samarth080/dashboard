@@ -38,13 +38,14 @@ async def content_client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]
         app.dependency_overrides.pop(get_session, None)
 
 
-async def approve_workflow(client: AsyncClient, suffix: str) -> tuple[str, str]:
-    """Drive a workflow to ready_for_approval and return (workflow_id, linkedin text).
+async def ready_workflow(client: AsyncClient, suffix: str) -> tuple[str, str, str]:
+    """Drive a workflow to ready_for_approval.
 
+    Returns (workflow_id, latest LinkedIn adaptation text, grounded claim id).
     `create_grounded_topic` returns (topic_id, claim_id) — the workflow endpoint
     resolves the evidence pack from the topic itself, so no pack id is sent.
     """
-    topic_id, _claim_id = await create_grounded_topic(client, suffix)
+    topic_id, claim_id = await create_grounded_topic(client, suffix)
     created = await client.post(
         "/api/content/workflows",
         json={
@@ -63,7 +64,13 @@ async def approve_workflow(client: AsyncClient, suffix: str) -> tuple[str, str]:
         (a for a in workflow["artifacts"] if a["stage"] == "linkedin_adaptation"),
         key=lambda a: a["revision"],
     )
-    return workflow_id, adaptation["content"]
+    return workflow_id, adaptation["content"], claim_id
+
+
+async def approve_workflow(client: AsyncClient, suffix: str) -> tuple[str, str]:
+    """`ready_workflow` for the tests that have no use for the claim id."""
+    workflow_id, content, _claim_id = await ready_workflow(client, suffix)
+    return workflow_id, content
 
 
 async def post_records_for(session: AsyncSession, workflow_id: str) -> list[PostRecord]:
@@ -221,6 +228,54 @@ async def test_rejection_leaves_a_manual_record_of_the_same_text_alone(
 
     still_there = await content_client.get(f"/api/memory/posts/{manual.json()['id']}")
     assert still_there.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_rerunning_a_workflow_withdraws_its_post_records(
+    content_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A re-run resets the approval, so the record claiming it must go too.
+
+    Otherwise the row survives as a claim that a live approval exists for text
+    the re-run has already replaced, and it goes on blocking other workflows.
+    """
+    workflow_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
+    approved = await content_client.post(
+        f"/api/content/workflows/{workflow_id}/approval",
+        json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert len(await post_records_for(db_session, workflow_id)) == 1
+
+    rerun = await content_client.post(f"/api/content/workflows/{workflow_id}/run")
+    assert rerun.status_code == 200, rerun.text
+    assert [a["decision"] for a in rerun.json()["approvals"]] == ["pending"]
+    assert await post_records_for(db_session, workflow_id) == []
+
+
+@pytest.mark.asyncio
+async def test_editing_an_adaptation_withdraws_that_platforms_record(
+    content_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    workflow_id, _, claim_id = await ready_workflow(content_client, uuid.uuid4().hex)
+    approved = await content_client.post(
+        f"/api/content/workflows/{workflow_id}/approval",
+        json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert len(await post_records_for(db_session, workflow_id)) == 1
+
+    edited = await content_client.put(
+        f"/api/content/workflows/{workflow_id}/artifacts/linkedin_adaptation",
+        json={
+            "content": "A human-edited LinkedIn draft grounded in the stored claim.",
+            "claims": [{"statement": "A staged system checks claims.", "claim_id": claim_id}],
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    assert [a["decision"] for a in edited.json()["approvals"]] == ["pending"]
+    # The approved text no longer exists, so neither may the record of it.
+    assert await post_records_for(db_session, workflow_id) == []
 
 
 @pytest.mark.asyncio

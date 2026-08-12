@@ -452,6 +452,33 @@ async def _quality_artifact(
     )
 
 
+async def _revoke_approval(
+    session: AsyncSession, workflow: ContentWorkflow, approval: ContentApproval
+) -> None:
+    """Return one platform approval to `pending` and withdraw what it claimed.
+
+    A workflow-origin `approved_unpublished` post record asserts that a live
+    local approval exists for this workflow and platform. The moment the
+    approval goes back to pending that assertion is false, and a false one is
+    not inert: it goes on blocking *other* workflows on similar topics, making
+    a user justify a duplicate of something that was never approved.
+
+    So resetting the decision and withdrawing the record are one operation,
+    not two that callers must remember to pair. Every path that revokes an
+    approval — a re-run, a manual edit of a platform adaptation — goes through
+    here; only `decide_approval`'s explicit rejection withdraws separately,
+    because it sets `rejected` rather than `pending`.
+    """
+    approval.decision = "pending"
+    approval.actor = None
+    approval.reason = None
+    approval.decided_at = None
+    approval.decision_run_id = None
+    await memory_service.remove_workflow_post(
+        session, workflow_id=workflow.id, platform=approval.platform
+    )
+
+
 async def _reset_approvals(
     session: AsyncSession, workflow: ContentWorkflow, required_level: int
 ) -> None:
@@ -473,11 +500,7 @@ async def _reset_approvals(
             workflow.approvals.append(approval)
         else:
             approval.required_level = decision.required_level
-            approval.decision = "pending"
-            approval.actor = None
-            approval.reason = None
-            approval.decided_at = None
-            approval.decision_run_id = None
+            await _revoke_approval(session, workflow, approval)
     await session.flush()
 
 
@@ -505,11 +528,9 @@ async def run_workflow(
     workflow.status = "running"
     workflow.latest_run_id = run.id
     for approval in workflow.approvals:
-        approval.decision = "pending"
-        approval.actor = None
-        approval.reason = None
-        approval.decided_at = None
-        approval.decision_run_id = None
+        # Up front, not only at the end: a run that stops at fact check has
+        # still invalidated whatever was approved before it started.
+        await _revoke_approval(session, workflow, approval)
 
     claims_context = _claim_context(pack)
     angle = await _generate_stage(
@@ -718,11 +739,9 @@ async def put_manual_artifact(
         platform = "linkedin" if stage.startswith("linkedin") else "x"
         for approval in workflow.approvals:
             if approval.platform == platform:
-                approval.decision = "pending"
-                approval.actor = None
-                approval.reason = None
-                approval.decided_at = None
-                approval.decision_run_id = None
+                # The approved text no longer exists — this edit replaced it —
+                # so the record claiming it is approved history goes too.
+                await _revoke_approval(session, workflow, approval)
         workflow.status = "ready_for_approval"
         workflow.current_stage = "approval"
     else:
