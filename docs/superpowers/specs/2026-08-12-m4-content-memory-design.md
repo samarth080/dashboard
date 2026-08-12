@@ -232,7 +232,7 @@ Migration `0005_content_memory` adds:
 - **`post_metric_snapshots`** — indexed `post_record_id`, `captured_at`,
   `source`, `is_mock`, and nullable `impressions`, `reactions`, `comments`,
   `reposts`, `clicks`, `follows`.
-- **`duplicate_configs`** — unique `version`, `is_active`, `Numeric`
+- **`duplicate_configs`** — unique `version`, `active`, `Numeric`
   `warn_threshold` and `block_threshold`, `cross_platform_check`,
   nullable `lookback_days`.
 - **`duplicate_checks`** — `workflow_id`, `platform`, `config_version`,
