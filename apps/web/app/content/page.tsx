@@ -2,6 +2,8 @@
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 
+import { DuplicatePanel, DuplicatePreview } from "./DuplicatePanel";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const ANGLE_TYPES = [
@@ -169,6 +171,10 @@ export default function ContentPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("Loading content workspace…");
   const [error, setError] = useState<string | null>(null);
+  // Keyed by platform so a duplicate check and its override reason for
+  // LinkedIn never leaks into an approval decision made for X, or vice versa.
+  const [duplicatePreviews, setDuplicatePreviews] = useState<Record<string, DuplicatePreview | null>>({});
+  const [overrideReasons, setOverrideReasons] = useState<Record<string, string>>({});
 
   const selected = useMemo(
     () => workflows.find((workflow) => workflow.id === selectedId) ?? null,
@@ -326,8 +332,24 @@ export default function ContentPage() {
     }, "Revision saved.");
   }
 
+  async function previewDuplicate(platform: "linkedin" | "x") {
+    if (!selected) return;
+    const adaptation = latestArtifacts(selected).find(
+      (artifact) => artifact.stage === `${platform}_adaptation`,
+    );
+    if (!adaptation) return;
+    const preview = await request<DuplicatePreview>("/api/memory/duplicate-check", {
+      method: "POST",
+      body: JSON.stringify({ platform, content: adaptation.content }),
+    });
+    setDuplicatePreviews((current) => ({ ...current, [platform]: preview }));
+  }
+
   function decide(platform: "linkedin" | "x", decision: "approved" | "rejected") {
     if (!selected) return;
+    const preview = duplicatePreviews[platform] ?? null;
+    const reason = (overrideReasons[platform] ?? "").trim();
+    const override = preview?.verdict === "block" && reason.length > 0;
     void runAction(async () => {
       const updated = await request<Workflow>(
         `/api/content/workflows/${selected.id}/approval`,
@@ -338,10 +360,14 @@ export default function ContentPage() {
             decision,
             actor: "user",
             reason: decision === "approved" ? "Reviewed in Content workspace." : "Needs revision.",
+            duplicate_override: override,
+            override_reason: override ? reason : null,
           }),
         },
       );
       replaceWorkflow(updated);
+      setDuplicatePreviews((current) => ({ ...current, [platform]: null }));
+      setOverrideReasons((current) => ({ ...current, [platform]: "" }));
       return `${label(platform)} draft ${decision}. No external action was performed.`;
     }, "Approval recorded.");
   }
@@ -566,29 +592,45 @@ export default function ContentPage() {
                     This records review state only. There is no publishing integration.
                   </p>
                   {selected.approvals.map((approval) => (
-                    <div key={approval.id} style={approvalRow}>
-                      <div>
-                        <strong>{label(approval.platform)}</strong>
-                        <div style={{ color: statusColor(approval.decision) }}>
-                          {label(approval.decision)} · Level {approval.required_level}
+                    <div key={approval.id}>
+                      <div style={approvalRow}>
+                        <div>
+                          <strong>{label(approval.platform)}</strong>
+                          <div style={{ color: statusColor(approval.decision) }}>
+                            {label(approval.decision)} · Level {approval.required_level}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            disabled={busy}
+                            onClick={() => void previewDuplicate(approval.platform)}
+                            style={smallButton}
+                          >
+                            Check content memory
+                          </button>
+                          <button
+                            disabled={busy}
+                            onClick={() => decide(approval.platform, "approved")}
+                            style={approveButton}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            disabled={busy}
+                            onClick={() => decide(approval.platform, "rejected")}
+                            style={rejectButton}
+                          >
+                            Reject
+                          </button>
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button
-                          disabled={busy}
-                          onClick={() => decide(approval.platform, "approved")}
-                          style={approveButton}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          disabled={busy}
-                          onClick={() => decide(approval.platform, "rejected")}
-                          style={rejectButton}
-                        >
-                          Reject
-                        </button>
-                      </div>
+                      <DuplicatePanel
+                        preview={duplicatePreviews[approval.platform] ?? null}
+                        overrideReason={overrideReasons[approval.platform] ?? ""}
+                        onOverrideReasonChange={(value) =>
+                          setOverrideReasons((current) => ({ ...current, [approval.platform]: value }))
+                        }
+                      />
                     </div>
                   ))}
                 </div>
