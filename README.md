@@ -9,8 +9,9 @@ workflows without unsafe automation.
 - **M0 — Repository Foundation:** complete
 - **M1 — Personal Brain:** complete
 - **M2 — Research Engine:** complete
-- **M3 — Content Engine:** complete in the current working tree
-- **Next:** M4 — Content Memory
+- **M3 — Content Engine:** complete
+- **M4 — Content Memory:** complete
+- **Next:** M5 — Job Engine
 - **External integrations:** blocked until capabilities are verified against
   current official documentation
 
@@ -21,8 +22,13 @@ normalization and deduplication, structured topic extraction and clustering,
 configurable ranking, pgvector storage, and evidence packs. M3 adds a persisted
 evidence-to-draft pipeline, deterministic fact checking, explainable quality
 evaluation, separate LinkedIn/X adaptations, append-only manual revisions, and
-local approval. The working product surfaces are `/settings`, `/research`, and
-`/content`.
+local approval. M4 adds post history, provider-tagged embeddings, a versioned
+duplicate policy that refuses to approve a near-duplicate without a recorded
+override reason, and mock performance snapshots. The working product surfaces
+are `/settings`, `/research`, `/content`, and `/analytics`.
+
+Nothing is published. M4 records what has already been said and blocks repeats;
+it adds no platform API, scheduler, or autonomous loop.
 
 ## Quick start
 
@@ -40,6 +46,7 @@ Open:
 - Personal Brain: `http://localhost:3000/settings`
 - Research workspace: `http://localhost:3000/research`
 - Content studio: `http://localhost:3000/content`
+- Post history and metrics: `http://localhost:3000/analytics`
 - API docs: `http://localhost:8000/docs`
 - Health check: `http://localhost:8000/api/health`
 
@@ -59,9 +66,14 @@ fallbacks exercise the workflow but are not a substitute for a real model.
    `voice-analysis/v1` prompt and logs usage against the request `run_id`.
 6. Open `/research`, register a public RSS/Atom feed or ingest a document, then
    create or extract ranked topics and attach evidence excerpts.
-7. Open `/content`, create a workflow from a topic with supported evidence,
-   inspect every generated stage, revise the platform drafts, and record local
-   approval. Approval does not publish anything.
+7. Open `/analytics` and record any posts you already published elsewhere, so
+   the duplicate check has history to compare against. Capturing metrics is
+   optional and produces deterministic mock figures, tagged as mock.
+8. Open `/content`, create a workflow from a topic with supported evidence,
+   inspect every generated stage, and revise the platform drafts. Before
+   approving, the workspace shows the duplicate verdict for that draft: a
+   `block` refuses approval until you supply a written override reason, which is
+   recorded. Approval records the post in history; it does not publish anything.
 
 Public posting, messaging, scraping, job applications, and platform account
 connections are not implemented.
@@ -117,7 +129,9 @@ database and rolls back test writes, including explicit commits.
 - [`docs/superpowers/plans/2026-08-11-m3-content-engine.md`](docs/superpowers/plans/2026-08-11-m3-content-engine.md)
   — completed M3 implementation checklist
 - [`docs/superpowers/specs/2026-08-12-m4-content-memory-design.md`](docs/superpowers/specs/2026-08-12-m4-content-memory-design.md)
-  — approved M4 design, not yet implemented
+  — implemented M4 design
+- [`docs/superpowers/plans/2026-08-12-m4-content-memory.md`](docs/superpowers/plans/2026-08-12-m4-content-memory.md)
+  — completed M4 implementation checklist
 
 The M0 design and plan under `docs/superpowers/` are historical records. The
 roadmap, architecture, and handover are authoritative for current behavior.

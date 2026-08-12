@@ -9,11 +9,14 @@ see `ROADMAP.md` for that.
 ## Current state
 
 Milestones **M0 (Repository Foundation)**, **M1 (Personal Brain)**, **M2
-(Research Engine)**, and **M3 (Content Engine)** are complete in the current
-working tree. The system has editable personal context, source-grounded
-research, and an inspectable evidence-to-platform-draft workflow that ends at
-local approval. Content memory, jobs, network features, and external platform
-actions have not started.
+(Research Engine)**, **M3 (Content Engine)**, and **M4 (Content Memory)** are
+complete. The system has editable personal context, source-grounded research, an
+inspectable evidence-to-platform-draft workflow that ends at local approval, and
+a memory of what has already been said that blocks a near-duplicate draft from
+being approved without a recorded override. Jobs, network features, and external
+platform actions have not started. Nothing is published: M4 records history and
+refuses duplicates; it introduces no platform API, scheduler, or autonomous
+loop.
 
 ## Shape of the system
 
@@ -26,7 +29,8 @@ src/               Shared library code, imported by both services
   brain/             profile, interests, memory, settings, voice workflow
   content/           staged generation, grounding, quality, adapters, approval
   db/                SQLAlchemy 2 async engine/session, models
-  llm/               LLM protocol, prompt registry, MockLLM, call persistence
+  llm/               LLM protocol, embeddings, prompt registry, MockLLM, persistence
+  memory/            post history, duplicate policy and scoring, mock analytics
   research/          sources, normalization, dedup, extraction, ranking, evidence
 prompts/            Versioned prompt files
 alembic/           Migrations
@@ -126,6 +130,18 @@ Migration `0004_content_engine` adds:
   to M2 evidence claims. Invalid claimed UUIDs remain inspectable but unresolved.
 - **`content_approvals`** — per-platform pending/approved/rejected local review
   with required level, actor, reason, decision time, and request run.
+
+Migration `0005_content_memory` adds:
+
+- **`post_records`** — post history per platform, from approved workflows or
+  manual backfill, with normalized text, content hash, and provider-tagged
+  embeddings. A unique `(workflow_id, platform)` pair makes workflow-origin
+  creation idempotent.
+- **`post_metric_snapshots`** — append-only, mock-tagged performance samples.
+  Unreported metrics stay NULL rather than 0.
+- **`duplicate_configs`** and **`duplicate_checks`** — versioned warn/block
+  thresholds and the persisted, explainable verdict with both sub-scores, the
+  nearest post, and any recorded override.
 
 ### Conventions later milestones must follow
 
@@ -266,6 +282,51 @@ an external service.
 - `PUT /api/content/workflows/{workflow_id}/artifacts/{stage}`
 - `POST /api/content/workflows/{workflow_id}/approval`
 
+## Content Memory
+
+`src/memory/service.py` owns post history and duplicate policy.
+`src/memory/similarity.py` is pure: cosine similarity, lexical Jaccard reused
+from M2, and verdict banding, with no session and no thresholds of its own.
+
+Candidate retrieval is a SQL prefilter followed by in-Python scoring. Vectors
+are dimension-unconstrained, so Postgres cannot index them; a database-side
+nearest-neighbour query would scan anyway while making the lexical signal
+impossible to blend. Only vectors from the same embedding model are compared.
+
+The combined score is `max(lexical, semantic)`, not a weighted mean: either
+signal alone is sufficient evidence, and averaging would dilute a strong signal.
+Both sub-scores are persisted so every verdict is explainable.
+
+`decide_approval` is the only M3 seam. A `block` verdict refuses approval with
+`409` unless the request carries `duplicate_override` and a non-empty written
+reason, which is persisted on the check. The blocked check row is committed
+before the `409` unwinds the request, so a refusal always leaves inspectable
+evidence of why. Approval then records the post as `approved_unpublished` —
+a claim about a live local approval, not about anything being published. A
+rejection records nothing and withdraws the workflow-origin post record that a
+previous approval created, so a withdrawn draft cannot go on blocking future
+drafts with its own text. Manual history and the `duplicate_checks` audit trail
+are never touched by that withdrawal.
+
+`MockEmbedder` hashes tokens into 1024 buckets, and fails in both directions:
+it cannot detect a paraphrase sharing no words with the original, and bucket
+collisions inflate similarity between unrelated texts as they lengthen. 1024 is
+a floor, not a preference — at 256 buckets, 400-token documents sharing no
+vocabulary at all still score around 0.61 on average and up to 0.67, close
+enough to the seeded 0.70 warn threshold to produce false warnings; at 1024 the
+same texts average about 0.27. Thresholds must never be calibrated against this
+embedder. `MockAnalyticsProvider` invents deterministic figures and
+tags every snapshot `is_mock`; metric capture is user-triggered per post, with
+no scheduler. Neither mock is a substitute for a real provider.
+
+### Content memory HTTP surface
+
+- `GET|POST /api/memory/posts`
+- `GET|PATCH|DELETE /api/memory/posts/{post_id}`
+- `GET|POST /api/memory/posts/{post_id}/metrics`
+- `GET|POST /api/memory/duplicate-configs`
+- `POST /api/memory/duplicate-check`
+
 ## LLM abstraction
 
 `src/llm/protocol.py` defines `LLMClient`, the contract every provider
@@ -286,11 +347,17 @@ Two rules hold for all implementations:
    calls are cost-loggable; a bare parsed object would put a hole in the
    cost-tracking table.
 
-`MockLLM` is the only implementation today. It is deterministic, makes no
-network calls, reports zero cost, accepts an injectable canned response, and can
+`src/llm/embeddings.py` mirrors that contract for embeddings:
+`EmbeddingProvider` returns an `EmbeddingResult` carrying vectors *plus* usage,
+so `log_llm_call()` records embedding spend in `llm_calls` alongside generation
+spend instead of a parallel table. Providers still never persist.
+
+`MockLLM` is the only `LLMClient` implementation today, and `MockEmbedder` the
+only `EmbeddingProvider`. Both are deterministic, make no network calls, and
+report zero cost; `MockLLM` accepts an injectable canned response and can
 satisfy schemas with required fields — so complete workflows are testable
-without credentials. A real provider remains deferred until credentialed model
-quality is explicitly needed and its budget behavior can be tested.
+without credentials. Real providers remain deferred until credentialed model
+quality is explicitly needed and budget behavior can be tested.
 
 Prompts live under `prompts/<name>/<version>.md` and are loaded through the
 path-safe registry in `src/llm/prompts.py`. Callers store a logical version such

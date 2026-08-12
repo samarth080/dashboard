@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
 Milestones for the Personal Career + Content + Network Intelligence Engine.
 
@@ -16,7 +16,7 @@ updated, and `HANDOVER.md` reflects reality.
 | M1 | Personal Brain | **Complete** |
 | M2 | Research Engine | **Complete** |
 | M3 | Content Engine | **Complete** |
-| M4 | Content Memory | Design approved |
+| M4 | Content Memory | **Complete** |
 | M5 | Job Engine | Not started |
 | M6 | Network CRM | Not started |
 | M7 | Integrations | Blocked on capability verification |
@@ -125,17 +125,26 @@ adapters and prompts; local Level 1-by-default approval records; manual stage
 revisions; request-linked model usage; and a functional Content workspace. No
 platform API or external side effect is present.
 
-## M4 — Content Memory
+## M4 — Content Memory ✅
 
-**Next milestone; design approved, implementation not started.**
+Design and completed implementation plan:
 
-Design: `docs/superpowers/specs/2026-08-12-m4-content-memory-design.md`
+- `docs/superpowers/specs/2026-08-12-m4-content-memory-design.md`
+- `docs/superpowers/plans/2026-08-12-m4-content-memory.md`
 
 Post history, embeddings, semantic duplicate detection, analytics model, mock
 analytics.
 
 Never auto-publish something highly similar to an existing post; threshold
 configurable.
+
+Delivered: post history from approved workflows and manual backfill; an
+`EmbeddingProvider` protocol with a deterministic `MockEmbedder` whose spend is
+cost-logged through `llm_calls`; versioned warn/block duplicate policy with
+explainable lexical and semantic sub-scores; an approval gate that refuses a
+near-duplicate without a recorded override reason; append-only mock metric
+snapshots; and post history and duplicate surfaces in the web app. Nothing is
+published — no platform API, scheduler, or autonomous loop was introduced.
 
 ## M5 — Job Engine
 
