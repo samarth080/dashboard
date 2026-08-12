@@ -9,6 +9,7 @@ from src.core.settings import get_settings
 from src.db import models  # noqa: F401  ensures models register on Base.metadata
 from src.db.base import Base
 from src.db.session import to_sync_url
+from src.memory import models as memory_models  # noqa: F401  register M4 models
 from src.research import models as research_models  # noqa: F401  register M2 models
 
 config = context.config
