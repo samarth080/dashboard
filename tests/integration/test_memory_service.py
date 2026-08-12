@@ -271,6 +271,84 @@ async def test_lookback_window_excludes_older_history(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
+async def test_lookback_uses_the_posted_date_not_the_backfill_date(db_session: AsyncSession):
+    """A two-year-old post backfilled today is old history, not fresh history.
+
+    `created_at` is when the row was typed in, which for manual backfill — the
+    corpus this criterion exists to build — says nothing about when the post
+    went out.
+    """
+    text = "A conference talk I gave two years ago and only now wrote down."
+    await service.create_post_record(
+        db_session,
+        PostRecordCreate(
+            platform="linkedin",
+            content=text,
+            posted_at=datetime.now(UTC) - timedelta(days=730),
+        ),
+        embedder=MockEmbedder(),
+        run_id=None,
+    )
+    config = await service.create_duplicate_config(
+        db_session,
+        DuplicateConfigCreate(
+            version="lookback-posted-at",
+            warn_threshold=Decimal("0.700"),
+            block_threshold=Decimal("0.850"),
+            lookback_days=90,
+        ),
+    )
+    evaluation = await service.evaluate_duplicate(
+        db_session,
+        text=text,
+        platform="linkedin",
+        config=config,
+        embedder=MockEmbedder(),
+        exclude_workflow_id=None,
+    )
+    assert evaluation.verdict == "clear"
+    assert evaluation.nearest_post_record_id is None
+
+
+@pytest.mark.asyncio
+async def test_lookback_keeps_a_recently_posted_backfill(db_session: AsyncSession):
+    """The mirror image: an old row about a recent post stays in the window."""
+    text = "Something I posted three days ago and backfilled straight away."
+    record = await service.create_post_record(
+        db_session,
+        PostRecordCreate(
+            platform="linkedin",
+            content=text,
+            posted_at=datetime.now(UTC) - timedelta(days=3),
+        ),
+        embedder=MockEmbedder(),
+        run_id=None,
+    )
+    # An old `created_at` must not evict a post that went out this week.
+    record.created_at = datetime.now(UTC) - timedelta(days=400)
+    await db_session.flush()
+    config = await service.create_duplicate_config(
+        db_session,
+        DuplicateConfigCreate(
+            version="lookback-recent-post",
+            warn_threshold=Decimal("0.700"),
+            block_threshold=Decimal("0.850"),
+            lookback_days=90,
+        ),
+    )
+    evaluation = await service.evaluate_duplicate(
+        db_session,
+        text=text,
+        platform="linkedin",
+        config=config,
+        embedder=MockEmbedder(),
+        exclude_workflow_id=None,
+    )
+    assert evaluation.verdict == "block"
+    assert evaluation.nearest_post_record_id == record.id
+
+
+@pytest.mark.asyncio
 async def test_workflow_post_withdrawal_spares_a_published_record(db_session: AsyncSession):
     """Withdrawal unwrites a claim about an approval, never a published post."""
     workflow = await create_workflow(db_session)

@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -331,7 +331,12 @@ async def evaluate_duplicate(
         )
     if config.lookback_days is not None:
         cutoff = datetime.now(UTC) - timedelta(days=config.lookback_days)
-        query = query.where(PostRecord.created_at >= cutoff)
+        # The window is about when the post went out, not when the row was
+        # written. A manual backfill of a two-year-old post is created today,
+        # so filtering on `created_at` alone would keep it inside every
+        # window forever. `posted_at` is null for workflow rows (an approval
+        # publishes nothing), and there `created_at` is the right date.
+        query = query.where(func.coalesce(PostRecord.posted_at, PostRecord.created_at) >= cutoff)
 
     candidates = list((await session.execute(query)).scalars().all())
 
