@@ -279,6 +279,55 @@ async def test_editing_an_adaptation_withdraws_that_platforms_record(
 
 
 @pytest.mark.asyncio
+async def test_a_published_record_survives_withdrawal_with_its_snapshots(
+    content_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Withdrawal is about a claim, and a published post is no longer a claim.
+
+    Once the user marks the row `published_externally` it describes something
+    that exists in the world; deleting it would take its append-only metric
+    history with it via the snapshots cascade.
+    """
+    workflow_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
+    approved = await content_client.post(
+        f"/api/content/workflows/{workflow_id}/approval",
+        json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+    )
+    assert approved.status_code == 200, approved.text
+    records = await post_records_for(db_session, workflow_id)
+    post_id = str(records[0].id)
+
+    published = await content_client.patch(
+        f"/api/memory/posts/{post_id}",
+        json={
+            "status": "published_externally",
+            "posted_at": "2026-08-01T09:00:00+00:00",
+            "external_url": "https://www.linkedin.com/posts/real-one",
+        },
+    )
+    assert published.status_code == 200, published.text
+    snapshot = await content_client.post(f"/api/memory/posts/{post_id}/metrics")
+    assert snapshot.status_code == 201, snapshot.text
+
+    rejected = await content_client.post(
+        f"/api/content/workflows/{workflow_id}/approval",
+        json={"platform": "linkedin", "decision": "rejected", "actor": "user"},
+    )
+    assert rejected.status_code == 200, rejected.text
+
+    survivor = await content_client.get(f"/api/memory/posts/{post_id}")
+    assert survivor.status_code == 200, survivor.text
+    assert survivor.json()["status"] == "published_externally"
+    assert survivor.json()["external_url"] == "https://www.linkedin.com/posts/real-one"
+    assert [item["id"] for item in survivor.json()["snapshots"]] == [snapshot.json()["id"]]
+
+    # A re-run is the other withdrawal path and must spare it just the same.
+    rerun = await content_client.post(f"/api/content/workflows/{workflow_id}/run")
+    assert rerun.status_code == 200, rerun.text
+    assert (await content_client.get(f"/api/memory/posts/{post_id}")).status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_override_without_a_reason_is_rejected(content_client: AsyncClient) -> None:
     workflow_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
     response = await content_client.post(

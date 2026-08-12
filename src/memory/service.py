@@ -245,8 +245,15 @@ async def remove_workflow_post(
 
     Filtered on `origin == "workflow"`, so a manual backfill of the same text
     can never be caught by this: only a row approval itself wrote is eligible
-    to be unwritten. A no-op when there is no such row, which is the normal
-    case for a rejection that was never preceded by an approval.
+    to be unwritten. Filtered on `status == "approved_unpublished"` as well,
+    because only that status is a claim about a live local approval. Once the
+    user marks the row `published_externally` it describes a real post that
+    exists in the world, and deleting it would take its append-only metric
+    snapshots with it (`PostRecord.snapshots` cascades) — silent loss of
+    history no approval decision is entitled to cause.
+
+    A no-op when there is no such row, which is the normal case for a
+    rejection that was never preceded by an approval.
 
     Deliberately not routed through `delete_post_record`: that function's
     refusal guards the public HTTP surface, where workflow history is not the
@@ -258,6 +265,7 @@ async def remove_workflow_post(
                 PostRecord.workflow_id == workflow_id,
                 PostRecord.platform == platform,
                 PostRecord.origin == "workflow",
+                PostRecord.status == "approved_unpublished",
             )
         )
     ).scalar_one_or_none()

@@ -271,6 +271,33 @@ async def test_lookback_window_excludes_older_history(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
+async def test_workflow_post_withdrawal_spares_a_published_record(db_session: AsyncSession):
+    """Withdrawal unwrites a claim about an approval, never a published post."""
+    workflow = await create_workflow(db_session)
+    record = await service.record_workflow_post(
+        db_session,
+        workflow_id=workflow.id,
+        platform="linkedin",
+        content="Approved locally, and then actually published.",
+        embedder=MockEmbedder(),
+        run_id=None,
+    )
+    await service.update_post_record(
+        db_session,
+        record.id,
+        PostRecordUpdate(status="published_externally", external_url="https://example.test/post"),
+    )
+    snapshot = await service.capture_metrics(
+        db_session, post_id=record.id, provider=MockAnalyticsProvider()
+    )
+    await service.remove_workflow_post(db_session, workflow_id=workflow.id, platform="linkedin")
+    survivor = await service.require_post_record(db_session, record.id)
+    assert survivor.status == "published_externally"
+    # The snapshots cascade, so losing the row would silently lose these too.
+    assert [item.id for item in survivor.snapshots] == [snapshot.id]
+
+
+@pytest.mark.asyncio
 async def test_a_workflow_does_not_block_itself(db_session: AsyncSession):
     workflow = await create_workflow(db_session)
     text = "The draft this very workflow already recorded as history."
