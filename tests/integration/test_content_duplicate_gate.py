@@ -171,6 +171,59 @@ async def test_near_duplicate_is_blocked_then_allowed_with_an_override(
 
 
 @pytest.mark.asyncio
+async def test_rejecting_a_platform_withdraws_its_post_record(
+    content_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    workflow_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
+    approved = await content_client.post(
+        f"/api/content/workflows/{workflow_id}/approval",
+        json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert len(await post_records_for(db_session, workflow_id)) == 1
+
+    rejected = await content_client.post(
+        f"/api/content/workflows/{workflow_id}/approval",
+        json={"platform": "linkedin", "decision": "rejected", "actor": "user"},
+    )
+    assert rejected.status_code == 200, rejected.text
+    assert await post_records_for(db_session, workflow_id) == []
+    # The audit trail records what happened and stays put; only the claim that
+    # this text is approved history is withdrawn.
+    assert len(await duplicate_checks_for(db_session, workflow_id)) == 1
+
+    # And a fresh workflow over the same text is no longer blocked by it.
+    second_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
+    second = await content_client.post(
+        f"/api/content/workflows/{second_id}/approval",
+        json={"platform": "linkedin", "decision": "approved", "actor": "user"},
+    )
+    assert second.status_code == 200, second.text
+    second_checks = await duplicate_checks_for(db_session, second_id)
+    assert [check.verdict for check in second_checks] == ["clear"]
+
+
+@pytest.mark.asyncio
+async def test_rejection_leaves_a_manual_record_of_the_same_text_alone(
+    content_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    workflow_id, text = await approve_workflow(content_client, uuid.uuid4().hex)
+    manual = await content_client.post(
+        "/api/memory/posts", json={"platform": "linkedin", "content": text}
+    )
+    assert manual.status_code == 201, manual.text
+
+    rejected = await content_client.post(
+        f"/api/content/workflows/{workflow_id}/approval",
+        json={"platform": "linkedin", "decision": "rejected", "actor": "user"},
+    )
+    assert rejected.status_code == 200, rejected.text
+
+    still_there = await content_client.get(f"/api/memory/posts/{manual.json()['id']}")
+    assert still_there.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_override_without_a_reason_is_rejected(content_client: AsyncClient) -> None:
     workflow_id, _ = await approve_workflow(content_client, uuid.uuid4().hex)
     response = await content_client.post(

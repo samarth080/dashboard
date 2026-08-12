@@ -238,6 +238,35 @@ async def record_workflow_post(
     return record
 
 
+async def remove_workflow_post(
+    session: AsyncSession, *, workflow_id: uuid.UUID, platform: str
+) -> None:
+    """Withdraw the post record an approval created for this workflow/platform.
+
+    Filtered on `origin == "workflow"`, so a manual backfill of the same text
+    can never be caught by this: only a row approval itself wrote is eligible
+    to be unwritten. A no-op when there is no such row, which is the normal
+    case for a rejection that was never preceded by an approval.
+
+    Deliberately not routed through `delete_post_record`: that function's
+    refusal guards the public HTTP surface, where workflow history is not the
+    caller's to delete. Here the workflow is withdrawing its own record.
+    """
+    record = (
+        await session.execute(
+            select(PostRecord).where(
+                PostRecord.workflow_id == workflow_id,
+                PostRecord.platform == platform,
+                PostRecord.origin == "workflow",
+            )
+        )
+    ).scalar_one_or_none()
+    if record is None:
+        return
+    await session.delete(record)
+    await session.flush()
+
+
 async def update_post_record(
     session: AsyncSession, post_id: uuid.UUID, data: PostRecordUpdate
 ) -> PostRecord:

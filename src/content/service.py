@@ -827,5 +827,14 @@ async def decide_approval(
             embedder=embedder,
             run_id=run.id,
         )
+    else:
+        # `approved_unpublished` is a claim about a live local approval, and a
+        # rejection withdraws that approval — so the claim must not be left
+        # standing, or a withdrawn draft would go on blocking future drafts
+        # with its own text. This unwrites only what approval wrote: the
+        # duplicate check trail stays, and manual history is never touched.
+        await memory_service.remove_workflow_post(
+            session, workflow_id=workflow.id, platform=data.platform
+        )
     await session.flush()
     return workflow
